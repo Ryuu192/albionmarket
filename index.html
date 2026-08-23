@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#17130e" />
+  <meta name="description" content="Consulta rápida de precios del mercado de Albion Online." />
+  <title>Albion Market Pocket</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">ALBION ONLINE</p>
+      <h1>Market Pocket</h1>
+    </div>
+    <button id="installBtn" class="ghost hidden">Instalar</button>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="field">
+        <label for="server">Servidor</label>
+        <select id="server">
+          <option value="west" selected>Américas</option>
+          <option value="europe">Europa</option>
+          <option value="east">Asia</option>
+        </select>
+      </div>
+
+      <div class="field search-field">
+        <label for="search">Objeto</label>
+        <input id="search" autocomplete="off" placeholder="Ej: Gran bastón ígneo, bolsa, T6_ORE…" />
+        <div id="searchStatus" class="hint">Cargando catálogo de objetos…</div>
+        <div id="suggestions" class="suggestions hidden"></div>
+      </div>
+
+      <div id="selectedItem" class="selected-item hidden">
+        <img id="itemImg" alt="" />
+        <div>
+          <strong id="itemName"></strong>
+          <small id="itemId"></small>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="field">
+          <label for="enchantment">Encantamiento</label>
+          <select id="enchantment">
+            <option value="0">.0</option>
+            <option value="1">.1</option>
+            <option value="2">.2</option>
+            <option value="3">.3</option>
+            <option value="4">.4</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="quality">Calidad</label>
+          <select id="quality">
+            <option value="1">Normal</option>
+            <option value="2">Buena</option>
+            <option value="3">Sobresaliente</option>
+            <option value="4">Excelente</option>
+            <option value="5">Obra maestra</option>
+          </select>
+        </div>
+      </div>
+
+      <button id="searchPrices" class="primary" disabled>Ver precios</button>
+      <p id="error" class="error hidden"></p>
+    </section>
+
+    <section id="summary" class="summary hidden">
+      <article class="best-card">
+        <span>Más barato para comprar</span>
+        <strong id="bestBuyPrice">—</strong>
+        <small id="bestBuyCity">—</small>
+      </article>
+      <article class="best-card">
+        <span>Mejor orden de compra</span>
+        <strong id="bestSellPrice">—</strong>
+        <small id="bestSellCity">—</small>
+      </article>
+    </section>
+
+    <section id="resultsSection" class="panel hidden">
+      <div class="section-title">
+        <h2>Precios por ciudad</h2>
+        <button id="refreshBtn" class="ghost">Actualizar</button>
+      </div>
+      <div id="updatedAt" class="hint"></div>
+      <div id="results" class="results"></div>
+    </section>
+
+    <section class="notice">
+      <strong>Importante:</strong> los precios no salen directamente del juego. Son datos comunitarios y cada precio muestra cuándo fue actualizado.
+    </section>
+  </main>
+
+  <footer>
+    Datos: Albion Online Data Project · Imágenes: Albion Render Service
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

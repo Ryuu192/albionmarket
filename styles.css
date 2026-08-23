@@ -1,0 +1,128 @@
+:root{
+  color-scheme:dark;
+  --bg:#0f0d0a;
+  --panel:#19150f;
+  --panel2:#211b13;
+  --line:#3a3023;
+  --text:#f3eadc;
+  --muted:#a99d8b;
+  --gold:#d7a64b;
+  --gold2:#f0c66b;
+  --danger:#ff8585;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  background:
+    radial-gradient(circle at top right,rgba(215,166,75,.10),transparent 32rem),
+    var(--bg);
+  color:var(--text);
+  min-height:100vh;
+}
+.topbar{
+  position:sticky;top:0;z-index:20;
+  display:flex;justify-content:space-between;align-items:center;
+  padding:16px max(16px,env(safe-area-inset-left));
+  background:rgba(15,13,10,.90);
+  backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line);
+}
+.eyebrow{margin:0;color:var(--gold);font-size:.68rem;letter-spacing:.18em;font-weight:800}
+h1{font-size:1.25rem;margin:2px 0 0}
+main{width:min(760px,100%);margin:auto;padding:16px}
+.panel,.notice{
+  background:linear-gradient(180deg,var(--panel2),var(--panel));
+  border:1px solid var(--line);
+  border-radius:18px;
+  padding:16px;
+  box-shadow:0 10px 30px rgba(0,0,0,.22);
+}
+.field{margin-bottom:14px;position:relative}
+label{display:block;font-size:.82rem;color:var(--muted);margin:0 0 7px}
+input,select,button{
+  width:100%;
+  font:inherit;
+  border-radius:12px;
+}
+input,select{
+  background:#0f0d0a;
+  color:var(--text);
+  border:1px solid var(--line);
+  padding:13px 12px;
+  outline:none;
+}
+input:focus,select:focus{border-color:var(--gold)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.primary{
+  border:0;padding:14px 16px;
+  background:linear-gradient(180deg,var(--gold2),var(--gold));
+  color:#211607;font-weight:900;cursor:pointer;
+}
+.primary:disabled{opacity:.45;cursor:not-allowed}
+.ghost{
+  width:auto;padding:8px 11px;
+  background:transparent;color:var(--text);
+  border:1px solid var(--line);cursor:pointer
+}
+.hint{font-size:.75rem;color:var(--muted);margin-top:7px}
+.error{color:var(--danger);font-size:.85rem;margin:12px 0 0}
+.hidden{display:none!important}
+.suggestions{
+  position:absolute;left:0;right:0;top:100%;z-index:30;
+  max-height:310px;overflow:auto;
+  background:#15110d;border:1px solid var(--line);
+  border-radius:12px;margin-top:5px;
+  box-shadow:0 18px 40px rgba(0,0,0,.5)
+}
+.suggestion{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 10px;border-bottom:1px solid #2a231a;cursor:pointer
+}
+.suggestion:last-child{border-bottom:0}
+.suggestion:hover{background:#211b13}
+.suggestion img{width:42px;height:42px;object-fit:contain}
+.suggestion div{min-width:0}
+.suggestion strong,.suggestion small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.suggestion small{color:var(--muted);font-size:.68rem}
+.selected-item{
+  display:flex;align-items:center;gap:12px;
+  border:1px solid var(--line);border-radius:14px;
+  padding:10px;margin:4px 0 14px;background:#100d0a
+}
+.selected-item img{width:60px;height:60px;object-fit:contain}
+.selected-item strong,.selected-item small{display:block}
+.selected-item small{color:var(--muted);margin-top:4px}
+.summary{
+  display:grid;grid-template-columns:1fr 1fr;gap:12px;
+  margin:14px 0
+}
+.best-card{
+  padding:14px;border-radius:16px;
+  background:#17130e;border:1px solid var(--line)
+}
+.best-card span,.best-card small{display:block;color:var(--muted);font-size:.76rem}
+.best-card strong{display:block;font-size:1.35rem;margin:6px 0;color:var(--gold2)}
+#resultsSection{margin-top:14px}
+.section-title{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.section-title h2{font-size:1rem;margin:0}
+.results{display:grid;gap:10px;margin-top:13px}
+.city-card{
+  background:#100d0a;border:1px solid var(--line);
+  padding:13px;border-radius:14px
+}
+.city-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.city-head strong{font-size:.95rem}
+.fresh{font-size:.68rem;color:var(--muted)}
+.price-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.price-box{background:#18130e;border-radius:10px;padding:10px}
+.price-box span{display:block;color:var(--muted);font-size:.7rem}
+.price-box strong{display:block;margin-top:3px;font-size:1rem}
+.stale{color:#e6b56b}
+.very-stale{color:#e88989}
+.notice{margin-top:14px;color:var(--muted);font-size:.78rem;line-height:1.45}
+.notice strong{color:var(--text)}
+footer{text-align:center;color:#73695b;font-size:.7rem;padding:22px 16px 34px}
+@media(max-width:460px){
+  .grid2,.summary{grid-template-columns:1fr}
+}
