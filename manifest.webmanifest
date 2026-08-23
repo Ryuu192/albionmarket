@@ -1,18 +1,32 @@
 {
   "name": "Albion Market Pocket",
   "short_name": "Albion Market",
+  "id": "./",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#0f0d0a",
+  "background_color": "#0c0a08",
   "theme_color": "#17130e",
   "lang": "es",
-  "description": "Consulta rápida de precios del mercado de Albion Online.",
+  "description": "Mercado móvil de Albion Online: precios, favoritos, rutas e historial.",
   "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
     {
       "src": "icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

@@ -1,37 +1,37 @@
-ALBION MARKET POCKET
+ALBION MARKET POCKET — V2
 
-Qué es
-------
-PWA móvil para consultar precios actuales de Albion Online desde el celular.
-No necesita backend ni base de datos.
+NOVEDADES
+---------
+- Favoritos guardados en el celular.
+- Búsquedas recientes.
+- Preferencias persistentes de servidor, calidad y encantamiento.
+- Mejor ruta de arbitraje instantáneo entre ciudades.
+- Calculadora de cantidad + comisión/impuesto editable.
+- Ordenar ciudades por compra, venta o frescura.
+- Historial de ventas por ciudad (7, 14 o 30 días).
+- Gráfico sin librerías externas.
+- Botón compartir.
+- PWA instalable y caché mejorada.
 
-Publicación rápida con GitHub Pages
------------------------------------
-1. Crea un repositorio nuevo en GitHub.
-2. Sube TODOS los archivos de esta carpeta a la raíz del repositorio.
-3. En GitHub entra a Settings > Pages.
-4. En "Build and deployment", elige "Deploy from a branch".
-5. Selecciona la rama main y la carpeta /(root), y guarda.
-6. Abre la URL de GitHub Pages desde el celular.
-7. Android/Chrome: menú ⋮ > "Añadir a pantalla de inicio" o usa el botón "Instalar" si aparece.
-   iPhone/Safari: Compartir > "Añadir a pantalla de inicio".
+PUBLICACIÓN RÁPIDA EN GITHUB PAGES
+----------------------------------
+1. Crea un repositorio o reemplaza los archivos del repositorio anterior.
+2. Sube TODOS los archivos de esta carpeta a la raíz.
+3. Settings > Pages > Deploy from a branch.
+4. Branch: main. Folder: /(root).
+5. Abre la URL publicada en el celular.
+6. Android/Chrome: Instalar app / Añadir a pantalla de inicio.
+   iPhone/Safari: Compartir > Añadir a pantalla de inicio.
 
-Uso
----
-- Elige servidor.
-- Busca un objeto por nombre en español o pega su Item ID (ej. T6_ORE).
-- Selecciona encantamiento y calidad.
-- Pulsa "Ver precios".
-- La app compara Caerleon, Bridgewatch, Fort Sterling, Lymhurst, Martlock,
-  Thetford, Brecilien y Black Market.
-
-Fuentes
+FUENTES
 -------
-- Precios: Albion Online Data Project.
-- Catálogo de objetos: ao-data/ao-bin-dumps.
+- Precios e historial: Albion Online Data Project.
+- Catálogo: ao-data/ao-bin-dumps.
 - Imágenes: Albion Online Render Service.
 
-Nota
+NOTA
 ----
-Los precios dependen de datos aportados por la comunidad. La fecha de actualización
-es importante: un precio viejo puede no coincidir con el mercado actual.
+Los datos del mercado son comunitarios. La app muestra antigüedad del dato.
+La calculadora de ruta usa el precio de venta más barato de la ciudad de origen
+y la orden de compra más alta del destino. La comisión es manual para no asumir
+un porcentaje incorrecto para tu situación.

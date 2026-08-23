@@ -4,34 +4,66 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#17130e" />
-  <meta name="description" content="Consulta rápida de precios del mercado de Albion Online." />
+  <meta name="description" content="Mercado móvil de Albion Online: precios, favoritos, rutas e historial." />
+  <meta name="apple-mobile-web-app-title" content="Albion Market" />
   <title>Albion Market Pocket</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar">
     <div>
       <p class="eyebrow">ALBION ONLINE</p>
-      <h1>Market Pocket</h1>
+      <h1>Market Pocket <span class="version">v2</span></h1>
     </div>
-    <button id="installBtn" class="ghost hidden">Instalar</button>
+    <div class="top-actions">
+      <button id="shareBtn" class="icon-btn" title="Compartir">↗</button>
+      <button id="installBtn" class="ghost hidden">Instalar</button>
+    </div>
   </header>
 
   <main>
+    <section id="favoriteSection" class="quick-section hidden">
+      <div class="section-title compact">
+        <h2>★ Favoritos</h2>
+        <button id="clearFavorites" class="text-btn">Limpiar</button>
+      </div>
+      <div id="favorites" class="chips"></div>
+    </section>
+
+    <section id="recentSection" class="quick-section hidden">
+      <div class="section-title compact">
+        <h2>Recientes</h2>
+        <button id="clearRecent" class="text-btn">Limpiar</button>
+      </div>
+      <div id="recents" class="chips"></div>
+    </section>
+
     <section class="panel">
-      <div class="field">
-        <label for="server">Servidor</label>
-        <select id="server">
-          <option value="west" selected>Américas</option>
-          <option value="europe">Europa</option>
-          <option value="east">Asia</option>
-        </select>
+      <div class="grid2">
+        <div class="field">
+          <label for="server">Servidor</label>
+          <select id="server">
+            <option value="west">Américas</option>
+            <option value="europe">Europa</option>
+            <option value="east">Asia</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="sort">Ordenar ciudades</label>
+          <select id="sort">
+            <option value="default">Orden normal</option>
+            <option value="sellAsc">Compra más barata</option>
+            <option value="buyDesc">Orden de compra más alta</option>
+            <option value="fresh">Datos más recientes</option>
+          </select>
+        </div>
       </div>
 
       <div class="field search-field">
-        <label for="search">Objeto</label>
+        <label for="search">Buscar objeto</label>
         <input id="search" autocomplete="off" placeholder="Ej: Gran bastón ígneo, bolsa, T6_ORE…" />
         <div id="searchStatus" class="hint">Cargando catálogo de objetos…</div>
         <div id="suggestions" class="suggestions hidden"></div>
@@ -39,10 +71,11 @@
 
       <div id="selectedItem" class="selected-item hidden">
         <img id="itemImg" alt="" />
-        <div>
+        <div class="selected-copy">
           <strong id="itemName"></strong>
           <small id="itemId"></small>
         </div>
+        <button id="favoriteBtn" class="favorite-btn" title="Agregar a favoritos">☆</button>
       </div>
 
       <div class="grid2">
@@ -74,15 +107,43 @@
 
     <section id="summary" class="summary hidden">
       <article class="best-card">
-        <span>Más barato para comprar</span>
+        <span>Comprar más barato</span>
         <strong id="bestBuyPrice">—</strong>
         <small id="bestBuyCity">—</small>
       </article>
       <article class="best-card">
-        <span>Mejor orden de compra</span>
+        <span>Vender instantáneo</span>
         <strong id="bestSellPrice">—</strong>
         <small id="bestSellCity">—</small>
       </article>
+    </section>
+
+    <section id="routeSection" class="panel hidden">
+      <div class="section-title">
+        <div>
+          <p class="eyebrow">TRANSPORTE</p>
+          <h2>Mejor ruta instantánea</h2>
+        </div>
+        <span id="routeBadge" class="badge">—</span>
+      </div>
+
+      <div id="routeText" class="route-main">—</div>
+
+      <div class="grid3">
+        <div class="field">
+          <label for="quantity">Cantidad</label>
+          <input id="quantity" type="number" min="1" step="1" value="1" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="marketFee">Coste/Impuesto (%)</label>
+          <input id="marketFee" type="number" min="0" max="100" step="0.1" value="0" inputmode="decimal" />
+        </div>
+        <div class="field">
+          <label>Ganancia estimada</label>
+          <div id="routeProfit" class="fake-input profit">—</div>
+        </div>
+      </div>
+      <p class="hint">El porcentaje es editable para que uses la comisión real que corresponda a tu cuenta y tipo de venta. No incluye riesgo ni coste del transporte.</p>
     </section>
 
     <section id="resultsSection" class="panel hidden">
@@ -94,8 +155,38 @@
       <div id="results" class="results"></div>
     </section>
 
+    <section id="historySection" class="panel hidden">
+      <div class="section-title">
+        <div>
+          <p class="eyebrow">TENDENCIA</p>
+          <h2>Historial de ventas</h2>
+        </div>
+        <button id="historyBtn" class="ghost">Cargar</button>
+      </div>
+      <div class="grid2 history-controls">
+        <div class="field">
+          <label for="historyCity">Ciudad</label>
+          <select id="historyCity"></select>
+        </div>
+        <div class="field">
+          <label for="historyDays">Período</label>
+          <select id="historyDays">
+            <option value="7">7 días</option>
+            <option value="14" selected>14 días</option>
+            <option value="30">30 días</option>
+          </select>
+        </div>
+      </div>
+      <div id="historyStats" class="history-stats hidden"></div>
+      <div class="chart-wrap">
+        <canvas id="historyChart" width="700" height="280"></canvas>
+        <div id="chartEmpty" class="chart-empty">Pulsa “Cargar” para ver la tendencia.</div>
+      </div>
+      <p class="hint">El histórico de Albion Online Data Project corresponde a ventas registradas y puede tener huecos si no hubo suficientes datos.</p>
+    </section>
+
     <section class="notice">
-      <strong>Importante:</strong> los precios no salen directamente del juego. Son datos comunitarios y cada precio muestra cuándo fue actualizado.
+      <strong>Importante:</strong> los precios son comunitarios. Mira siempre la antigüedad del dato antes de transportar plata o comprar grandes cantidades.
     </section>
   </main>
 
