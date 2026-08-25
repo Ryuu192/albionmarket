@@ -7,17 +7,17 @@
   <meta name="description" content="Mercado móvil de Albion Online: precios, Mi cofre por captura, transporte e historial." />
   <meta name="apple-mobile-web-app-title" content="Albion Market" />
   <title>Albion Market Pocket</title>
-  <link rel="manifest" href="manifest.webmanifest?v=2.5.0" />
+  <link rel="manifest" href="manifest.webmanifest?v=2.5.1" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=2.5.0" />
+  <link rel="stylesheet" href="styles.css?v=2.5.1" />
 </head>
 <body>
   <header class="app-header">
     <div class="topbar">
       <div>
         <p class="eyebrow">ALBION ONLINE</p>
-        <h1>Market Pocket <span class="version">v2.5</span></h1>
+        <h1>Market Pocket <span class="version">v2.5.1</span></h1>
       </div>
       <div class="top-actions">
         <button id="shareBtn" class="icon-btn" title="Compartir">↗</button>
@@ -169,8 +169,16 @@
       </div>
 
       <div class="capture-intro">
-        <p>Abre tu cofre en Albion y toma una captura completa. La imagen se procesa en este dispositivo: no se guarda ni se envía a ningún servidor.</p>
-        <label for="chestCaptureInput" class="primary capture-picker">Elegir captura</label>
+        <p>Abre tu cofre en Albion y toma una captura completa. Puedes elegir el archivo o copiar la imagen y pegarla directamente. La captura se procesa en este dispositivo.</p>
+        <div class="capture-source-options">
+          <label for="chestCaptureInput" class="primary capture-picker">Elegir captura</label>
+          <span class="capture-source-or">o</span>
+          <div id="clipboardPasteZone" class="capture-paste-zone" role="button" tabindex="0" aria-label="Pegar captura con Control más V">
+            <span>Pegar captura</span>
+            <strong><kbd>Ctrl</kbd> + <kbd>V</kbd></strong>
+            <small>También funciona con Cmd + V</small>
+          </div>
+        </div>
         <input id="chestCaptureInput" class="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" />
       </div>
 
@@ -302,6 +310,6 @@
     Datos: Albion Online Data Project · Imágenes: Albion Render Service · OCR local: Tesseract.js
   </footer>
 
-  <script src="app.js?v=2.5.0"></script>
+  <script src="app.js?v=2.5.1"></script>
 </body>
 </html>

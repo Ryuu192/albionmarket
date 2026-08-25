@@ -186,6 +186,32 @@ function handleCaptureFile(file){
   img.onerror=()=>setCaptureStatus("No pude abrir esa captura. Prueba con PNG, JPG o WebP.");
   img.src=captureObjectUrl;
 }
+function clipboardImage(event){
+  const items=[...(event.clipboardData?.items||[])];
+  const imageItem=items.find(item=>String(item.type).startsWith("image/"));
+  if(imageItem){
+    const file=imageItem.getAsFile();
+    if(file) return file;
+  }
+  return [...(event.clipboardData?.files||[])].find(file=>String(file.type).startsWith("image/"))||null;
+}
+function handleCapturePaste(event){
+  const file=clipboardImage(event);
+  const pasteZone=$("clipboardPasteZone");
+  if(!file){
+    if(event.target.closest?.("#clipboardPasteZone")){
+      event.preventDefault();
+      setCaptureStatus("El portapapeles no contiene una imagen. Copia la captura y vuelve a pulsar Ctrl + V.");
+    }
+    return;
+  }
+  event.preventDefault();
+  openChestImport();
+  pasteZone.classList.add("pasted");
+  setTimeout(()=>pasteZone.classList.remove("pasted"),900);
+  setCaptureStatus("Captura pegada. Preparando la imagen…",true);
+  handleCaptureFile(file);
+}
 function captureCoordinates(event){
   const stage=$("captureStage");
   const img=$("captureImage");
@@ -1158,6 +1184,15 @@ $("chestCaptureInput").addEventListener("change",event=>{
   handleCaptureFile(event.target.files?.[0]);
   event.target.value="";
 });
+$("clipboardPasteZone").addEventListener("click",()=>{
+  $("clipboardPasteZone").focus();
+  setCaptureStatus("Pulsa Ctrl + V para pegar la captura que copiaste.");
+});
+$("clipboardPasteZone").addEventListener("keydown",event=>{
+  if(event.key!=="Enter"&&event.key!==" ") return;
+  event.preventDefault();
+  setCaptureStatus("Ahora pulsa Ctrl + V para pegar la captura.");
+});
 $("captureStage").addEventListener("click",event=>{
   if(!$("captureImage").naturalWidth) return;
   addCaptureDraft(captureCoordinates(event));
@@ -1350,6 +1385,7 @@ document.addEventListener("click",e=>{
   if(!e.target.closest(".search-field")) $("suggestions").classList.add("hidden");
   if(!e.target.closest(".capture-item-search")) document.querySelectorAll(".capture-draft-suggestions").forEach(box=>box.classList.add("hidden"));
 });
+document.addEventListener("paste",handleCapturePaste);
 
 window.addEventListener("beforeunload",()=>{
   if(captureObjectUrl) URL.revokeObjectURL(captureObjectUrl);
@@ -1366,7 +1402,7 @@ $("installBtn").addEventListener("click",async()=>{
 });
 
 if("serviceWorker" in navigator){
-  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js?v=2.5.0").catch(()=>{}));
+  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js?v=2.5.1").catch(()=>{}));
 }
 
 loadSettings();

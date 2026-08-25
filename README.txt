@@ -1,4 +1,4 @@
-ALBION MARKET POCKET — V2.5
+ALBION MARKET POCKET — V2.5.1
 
 NOVEDADES
 ---------
@@ -9,6 +9,7 @@ NOVEDADES
 - Nueva interfaz e iconos en tonos morados.
 - Pantallas separadas para Mercado y Transporte con navegación superior.
 - Importación de Mi cofre mediante capturas, sin subir la imagen a servidores.
+- Pegado directo de capturas desde el portapapeles con Ctrl + V o Cmd + V.
 - Selección visual de casillas con recorte del icono para confirmar cada objeto.
 - Lectura OCR local de cantidades con corrección manual cuando sea necesario.
 - Importación por lotes y consulta automática de los precios de toda la captura.
