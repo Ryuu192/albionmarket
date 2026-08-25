@@ -1,12 +1,12 @@
-const CACHE="albion-market-pocket-v2-5-chest-capture-v1";
+const CACHE="albion-market-pocket-v2-5-chest-capture-v2";
 const OCR_CACHE="albion-market-pocket-ocr-v1";
 const OCR_HOSTS=new Set(["cdn.jsdelivr.net","unpkg.com","tessdata.projectnaptha.com"]);
 const ASSETS=[
   "./",
   "./index.html",
-  "./styles.css",
-  "./app.js",
-  "./manifest.webmanifest",
+  "./styles.css?v=2.5.0",
+  "./app.js?v=2.5.0",
+  "./manifest.webmanifest?v=2.5.0",
   "./icon.svg",
   "./icon-192.png",
   "./icon-512.png"
@@ -40,12 +40,12 @@ self.addEventListener("fetch",event=>{
   }
 
   if(event.request.mode==="navigate"){
-    event.respondWith(fetch(event.request).catch(()=>caches.match("./index.html")));
+    event.respondWith(fetch(event.request,{cache:"no-store"}).catch(()=>caches.match("./index.html")));
     return;
   }
 
   event.respondWith(
-    fetch(event.request).then(response=>{
+    fetch(event.request,{cache:"no-store"}).then(response=>{
       if(response.ok){
         const copy=response.clone();
         caches.open(CACHE).then(cache=>cache.put(event.request,copy));

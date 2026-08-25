@@ -1366,7 +1366,7 @@ $("installBtn").addEventListener("click",async()=>{
 });
 
 if("serviceWorker" in navigator){
-  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js?v=2.5.0").catch(()=>{}));
 }
 
 loadSettings();
