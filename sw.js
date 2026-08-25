@@ -1,4 +1,4 @@
-const CACHE="albion-market-pocket-v2-2-chest-v3";
+const CACHE="albion-market-pocket-v2-3-purple-v1";
 const ASSETS=[
   "./",
   "./index.html",

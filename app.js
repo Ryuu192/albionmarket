@@ -9,7 +9,7 @@ const ITEMS_URL = "https://raw.githubusercontent.com/ao-data/ao-bin-dumps/master
 const CITIES = ["Caerleon","Bridgewatch","Fort Sterling","Lymhurst","Martlock","Thetford","Brecilien","Black Market"];
 const TRANSPORT_ORIGINS = CITIES.filter(city=>city!=="Black Market");
 const SERVER_NAMES = {west:"Américas",europe:"Europa",east:"Asia"};
-const QUALITY_NAMES = {1:"Normal",2:"Buena",3:"Sobresaliente",4:"Excelente",5:"Obra maestra"};
+const QUALITY_NAMES = {1:"Normal",2:"Bueno",3:"Notable",4:"Sobresaliente",5:"Obra maestra"};
 const STORE = {
   settings: "amp-settings-v2",
   favorites: "amp-favorites-v2",
