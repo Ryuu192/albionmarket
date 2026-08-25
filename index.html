@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#1b1028" />
-  <meta name="description" content="Mercado móvil de Albion Online: precios, favoritos, cofre, transporte e historial." />
+  <meta name="description" content="Mercado móvil de Albion Online: precios, Mi cofre por captura, transporte e historial." />
   <meta name="apple-mobile-web-app-title" content="Albion Market" />
   <title>Albion Market Pocket</title>
   <link rel="manifest" href="manifest.webmanifest" />
@@ -17,7 +17,7 @@
     <div class="topbar">
       <div>
         <p class="eyebrow">ALBION ONLINE</p>
-        <h1>Market Pocket <span class="version">v2.4</span></h1>
+        <h1>Market Pocket <span class="version">v2.5</span></h1>
       </div>
       <div class="top-actions">
         <button id="shareBtn" class="icon-btn" title="Compartir">↗</button>
@@ -153,6 +153,57 @@
       <p id="routeText" class="hint">La app comparará este objeto junto con el resto de tu cofre.</p>
     </section>
 
+    <section id="chestImportPanel" class="panel hidden view-hidden" data-screen="transport">
+      <div class="section-title planner-header">
+        <div>
+          <p class="eyebrow">MI COFRE</p>
+          <h2>Importar desde una captura</h2>
+        </div>
+        <button id="closeChestImportBtn" class="ghost">Cerrar</button>
+      </div>
+
+      <div class="capture-steps" aria-label="Pasos para importar el cofre">
+        <span><b>1</b> Sube la captura</span>
+        <span><b>2</b> Toca cada objeto</span>
+        <span><b>3</b> Confirma y añade</span>
+      </div>
+
+      <div class="capture-intro">
+        <p>Abre tu cofre en Albion y toma una captura completa. La imagen se procesa en este dispositivo: no se guarda ni se envía a ningún servidor.</p>
+        <label for="chestCaptureInput" class="primary capture-picker">Elegir captura</label>
+        <input id="chestCaptureInput" class="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" />
+      </div>
+
+      <div id="captureWorkspace" class="capture-workspace hidden">
+        <div class="capture-toolbar">
+          <div class="field capture-size-field">
+            <label for="captureSlotSize">Tamaño aproximado de cada casilla: <strong id="captureSlotSizeLabel">72 px</strong></label>
+            <input id="captureSlotSize" type="range" min="44" max="180" step="2" value="72" />
+          </div>
+          <button id="clearCaptureMarksBtn" class="text-btn danger-text">Borrar marcas</button>
+        </div>
+
+        <div id="captureStage" class="capture-stage" role="button" tabindex="0" aria-label="Captura del cofre. Toca el centro de cada objeto que quieras importar.">
+          <img id="captureImage" alt="Captura del cofre de Albion" />
+          <canvas id="captureOverlay" aria-hidden="true"></canvas>
+        </div>
+        <p id="captureStatus" class="hint capture-status" aria-live="polite">Toca el centro de cada objeto que quieras añadir.</p>
+
+        <div class="section-title cargo-title capture-drafts-title">
+          <h3>Casillas seleccionadas <span id="captureDraftCount" class="nav-count hidden">0</span></h3>
+          <button id="addManualCaptureItemBtn" class="text-btn">+ Añadir sin marcar</button>
+        </div>
+        <div id="captureDrafts" class="capture-drafts"></div>
+
+        <div class="capture-actions">
+          <label for="chestCaptureInput" class="ghost capture-replace">Cambiar captura</label>
+          <button id="importChestItemsBtn" class="primary" disabled>Añadir al cofre y consultar precios</button>
+        </div>
+      </div>
+
+      <p class="hint privacy-note"><strong>Privacidad:</strong> el reconocimiento de cantidades se ejecuta localmente. La primera vez puede descargar el motor OCR; la captura nunca sale de tu dispositivo. Como Albion no muestra el nombre sobre cada icono, tendrás que confirmarlo mediante la búsqueda.</p>
+    </section>
+
     <section id="transportPlanner" class="panel view-hidden" data-screen="transport">
       <div class="section-title planner-header">
         <div>
@@ -160,6 +211,7 @@
           <h2>¿Dónde conviene vender?</h2>
         </div>
         <div class="planner-actions">
+          <button id="importCaptureBtn" class="ghost">Importar captura</button>
           <button id="addTransportItemBtn" class="ghost">Añadir objeto</button>
           <button id="refreshTransportBtn" class="ghost">Actualizar precios</button>
           <button id="clearTransportBtn" class="text-btn danger-text">Vaciar</button>
@@ -247,7 +299,7 @@
   </main>
 
   <footer>
-    Datos: Albion Online Data Project · Imágenes: Albion Render Service
+    Datos: Albion Online Data Project · Imágenes: Albion Render Service · OCR local: Tesseract.js
   </footer>
 
   <script src="app.js"></script>

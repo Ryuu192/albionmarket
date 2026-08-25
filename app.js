@@ -25,6 +25,11 @@ let installPrompt = null;
 let debounceTimer = null;
 let transportInputTimer = null;
 let fetchSeq = 0;
+let captureDrafts = [];
+let captureObjectUrl = "";
+let captureOcrWorker = null;
+let captureOcrWorkerPromise = null;
+let captureOcrQueue = Promise.resolve();
 
 const safeJSON = (s, fallback) => { try { return JSON.parse(s) ?? fallback; } catch { return fallback; } };
 const getStore = (key, fallback) => safeJSON(localStorage.getItem(key), fallback);
@@ -65,7 +70,7 @@ function compactItemCatalog(list){
     const item = normalizeItem(obj);
     if(!item) continue;
     const id = baseId(item.id);
-    if(id.includes("_UNTRADEABLE")) continue;
+    if(id.includes("_UNTRADEABLE")||id.includes("_NONTRADABLE")) continue;
 
     const score = (item.id === id ? 2 : 0) + (item.name !== "Objeto" ? 1 : 0);
     const previous = unique.get(id);
@@ -132,9 +137,366 @@ function navigateToView(view,focusSearch=false){
   if(focusSearch) setTimeout(()=>$("search").focus(),0);
 }
 
+function captureUid(){
+  return `capture-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,7)}`;
+}
+function setCaptureStatus(message,busy=false){
+  $("captureStatus").textContent=message;
+  $("captureStatus").classList.toggle("busy",busy);
+}
+function openChestImport(){
+  navigateToView("transport");
+  $("chestImportPanel").classList.remove("hidden");
+  $("transportPlanner").classList.add("capture-open-hidden");
+  setTimeout(()=>$("chestImportPanel").scrollIntoView({block:"start",behavior:"smooth"}),0);
+}
+function closeChestImport(){
+  $("chestImportPanel").classList.add("hidden");
+  $("transportPlanner").classList.remove("capture-open-hidden");
+}
+function clearCaptureDrafts(){
+  captureDrafts=[];
+  renderCaptureDrafts();
+  setCaptureStatus("Toca el centro de cada objeto que quieras añadir.");
+}
+function captureSlotSize(){
+  return Math.max(44,Math.min(180,Number($("captureSlotSize").value)||72));
+}
+function handleCaptureFile(file){
+  if(!file) return;
+  if(!String(file.type).startsWith("image/")){
+    setCaptureStatus("El archivo seleccionado no es una imagen compatible.");
+    return;
+  }
+  if(file.size>40*1024*1024){
+    setCaptureStatus("La captura supera 40 MB. Usa una imagen PNG, JPG o WebP más pequeña.");
+    return;
+  }
+
+  if(captureObjectUrl) URL.revokeObjectURL(captureObjectUrl);
+  captureObjectUrl=URL.createObjectURL(file);
+  const img=$("captureImage");
+  img.onload=()=>{
+    captureDrafts=[];
+    $("captureWorkspace").classList.remove("hidden");
+    renderCaptureDrafts();
+    drawCaptureOverlay();
+    setCaptureStatus(`Captura lista (${img.naturalWidth} × ${img.naturalHeight}). Toca el centro de cada objeto.`);
+  };
+  img.onerror=()=>setCaptureStatus("No pude abrir esa captura. Prueba con PNG, JPG o WebP.");
+  img.src=captureObjectUrl;
+}
+function captureCoordinates(event){
+  const stage=$("captureStage");
+  const img=$("captureImage");
+  const rect=stage.getBoundingClientRect();
+  const cssX=event.clientX-rect.left+stage.scrollLeft;
+  const cssY=event.clientY-rect.top+stage.scrollTop;
+  const scale=img.naturalWidth/Math.max(1,img.clientWidth);
+  return {x:cssX*scale,y:cssY*scale};
+}
+function cropCaptureDraft(draft){
+  if(draft.x==null||!$("captureImage").naturalWidth) return "";
+  const img=$("captureImage");
+  const side=Math.max(30,Number(draft.slotSize)||captureSlotSize());
+  const sx=Math.max(0,draft.x-side/2);
+  const sy=Math.max(0,draft.y-side/2);
+  const sw=Math.min(side,img.naturalWidth-sx);
+  const sh=Math.min(side,img.naturalHeight-sy);
+  const canvas=document.createElement("canvas");
+  canvas.width=144;canvas.height=144;
+  const ctx=canvas.getContext("2d");
+  ctx.fillStyle="#08050d";ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
+  ctx.drawImage(img,sx,sy,sw,sh,0,0,canvas.width,canvas.height);
+  return canvas.toDataURL("image/jpeg",.88);
+}
+function recropCaptureDrafts(){
+  const side=captureSlotSize();
+  for(const draft of captureDrafts){
+    if(draft.x==null) continue;
+    draft.slotSize=side;
+    draft.crop=cropCaptureDraft(draft);
+  }
+  renderCaptureDrafts();
+}
+function drawCaptureOverlay(){
+  const img=$("captureImage"),canvas=$("captureOverlay");
+  if(!img.naturalWidth) return;
+  canvas.width=img.naturalWidth;
+  canvas.height=img.naturalHeight;
+  const ctx=canvas.getContext("2d");
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const line=Math.max(3,canvas.width/500);
+  ctx.textAlign="center";ctx.textBaseline="middle";
+  captureDrafts.forEach((draft,index)=>{
+    if(draft.x==null) return;
+    const side=draft.slotSize||captureSlotSize();
+    ctx.lineWidth=line;
+    ctx.strokeStyle="#c4a7ff";
+    ctx.fillStyle="rgba(139,92,246,.16)";
+    ctx.fillRect(draft.x-side/2,draft.y-side/2,side,side);
+    ctx.strokeRect(draft.x-side/2,draft.y-side/2,side,side);
+    const radius=Math.max(11,side*.19);
+    ctx.beginPath();ctx.arc(draft.x-side/2+radius*.75,draft.y-side/2+radius*.75,radius,0,Math.PI*2);
+    ctx.fillStyle="#8b5cf6";ctx.fill();
+    ctx.fillStyle="#160b28";ctx.font=`900 ${Math.max(14,radius)}px system-ui`;
+    ctx.fillText(String(index+1),draft.x-side/2+radius*.75,draft.y-side/2+radius*.75+1);
+  });
+}
+function addCaptureDraft(point=null){
+  const side=captureSlotSize();
+  if(point){
+    const duplicate=captureDrafts.some(draft=>draft.x!=null&&Math.hypot(draft.x-point.x,draft.y-point.y)<side*.42);
+    if(duplicate){
+      setCaptureStatus("Esa casilla ya está marcada. Toca otro objeto.");
+      return;
+    }
+  }
+  const draft={
+    uid:captureUid(),x:point?.x??null,y:point?.y??null,slotSize:side,crop:"",
+    query:"",item:null,enchantment:0,quality:1,quantity:1,matches:[],
+    quantityEdited:false,ocrState:point?"busy":"manual",ocrStatus:point?"Preparando lectura de cantidad…":"Cantidad manual"
+  };
+  draft.crop=cropCaptureDraft(draft);
+  captureDrafts.push(draft);
+  renderCaptureDrafts();
+  if(point) queueQuantityRecognition(draft.uid);
+  else setTimeout(()=>$("captureDrafts").querySelector(`[data-capture-id="${draft.uid}"] [data-field="item"]`)?.focus(),0);
+}
+function captureQualityOptions(selectedQuality){
+  return Object.entries(QUALITY_NAMES).map(([value,label])=>`<option value="${value}" ${Number(value)===Number(selectedQuality)?"selected":""}>${esc(label)}</option>`).join("");
+}
+function renderCaptureDrafts(){
+  $("captureDraftCount").textContent=captureDrafts.length;
+  $("captureDraftCount").classList.toggle("hidden",!captureDrafts.length);
+  $("captureDrafts").innerHTML=captureDrafts.map((draft,index)=>`
+    <article class="capture-draft ${draft.item?"ready":""}" data-capture-id="${esc(draft.uid)}">
+      <div class="capture-draft-preview">
+        ${draft.crop?`<img src="${draft.crop}" alt="Recorte de la casilla ${index+1}">`:`<span class="capture-draft-placeholder">+</span>`}
+        <span class="capture-draft-number">${index+1}</span>
+      </div>
+      <div class="capture-draft-main">
+        <div class="capture-item-search">
+          <label for="capture-item-${esc(draft.uid)}">Objeto ${draft.item?`<small>✓ confirmado</small>`:""}</label>
+          <input id="capture-item-${esc(draft.uid)}" data-field="item" autocomplete="off" placeholder="Buscar nombre o ID…" value="${esc(draft.query)}">
+          <div class="capture-draft-suggestions hidden"></div>
+        </div>
+        <div class="capture-mini-grid">
+          <div class="field">
+            <label for="capture-enchant-${esc(draft.uid)}">Encantamiento</label>
+            <select id="capture-enchant-${esc(draft.uid)}" data-field="enchantment">
+              ${[0,1,2,3,4].map(value=>`<option value="${value}" ${value===Number(draft.enchantment)?"selected":""}>.${value}</option>`).join("")}
+            </select>
+          </div>
+          <div class="field">
+            <label for="capture-quality-${esc(draft.uid)}">Calidad</label>
+            <select id="capture-quality-${esc(draft.uid)}" data-field="quality">${captureQualityOptions(draft.quality)}</select>
+          </div>
+          <div class="field">
+            <label for="capture-qty-${esc(draft.uid)}">Cantidad</label>
+            <input id="capture-qty-${esc(draft.uid)}" data-field="quantity" type="number" min="1" step="1" inputmode="numeric" value="${draft.quantity}">
+          </div>
+        </div>
+        <div class="capture-ocr-status ${draft.ocrState==="done"?"good":draft.ocrState==="error"?"bad":""}">
+          <span>${esc(draft.ocrStatus)}</span>
+          ${draft.x!=null&&draft.ocrState!=="busy"?`<button data-action="retry-ocr" type="button">Releer</button>`:""}
+        </div>
+      </div>
+      <button class="remove-item" data-action="remove-capture" title="Quitar casilla" aria-label="Quitar casilla ${index+1}">×</button>
+    </article>`).join("");
+  if(!captureDrafts.length){
+    $("captureDrafts").innerHTML=`<div class="transport-empty">Toca los objetos de la captura o añade una fila manual.</div>`;
+  }
+  updateCaptureImportButton();
+  drawCaptureOverlay();
+}
+function updateCaptureImportButton(){
+  const button=$("importChestItemsBtn");
+  const ready=captureDrafts.filter(draft=>draft.item).length;
+  button.disabled=!captureDrafts.length||ready!==captureDrafts.length;
+  button.textContent=!captureDrafts.length?"Añadir al cofre y consultar precios":ready===captureDrafts.length?`Añadir ${ready} objeto${ready===1?"":"s"} al cofre`:`Confirma ${captureDrafts.length-ready} objeto${captureDrafts.length-ready===1?"":"s"}`;
+}
+
+function findCaptureMatches(query){
+  const raw=query.trim();
+  const q=raw.toLocaleLowerCase("es");
+  if(q.length<2) return [];
+  const matches=items
+    .filter(item=>item.name.toLocaleLowerCase("es").includes(q)||item.id.toLowerCase().includes(q))
+    .sort((a,b)=>searchScore(a,q)-searchScore(b,q))
+    .slice(0,7);
+  if(/^[A-Z0-9]+_[A-Z0-9_]+(?:@\d+)?$/i.test(raw)){
+    const typed=raw.toUpperCase();
+    if(!matches.some(item=>item.id===baseId(typed))){
+      matches.push({id:typed,name:`Usar ID ${typed}`,manual:true});
+    }
+  }
+  return matches.slice(0,8);
+}
+function renderCaptureSuggestions(draft,card){
+  const box=card.querySelector(".capture-draft-suggestions");
+  draft.matches=findCaptureMatches(draft.query);
+  if(!draft.matches.length){
+    box.innerHTML=draft.query.trim().length>=2?`<div class="transport-empty">Sin coincidencias. También puedes pegar el ID del objeto.</div>`:"";
+    box.classList.toggle("hidden",!box.innerHTML);
+    return;
+  }
+  box.innerHTML=draft.matches.map((item,index)=>`
+    <button type="button" class="capture-draft-suggestion" data-action="select-capture-item" data-index="${index}">
+      <img src="${imageUrl(baseId(item.id),1,64)}" alt="" loading="lazy">
+      <span><strong>${esc(item.name)}</strong><small>${esc(item.id)}</small></span>
+    </button>`).join("");
+  box.classList.remove("hidden");
+}
+function selectCaptureItem(draft,item){
+  const enchantment=Number(String(item.id).match(/@(\d+)$/)?.[1]||draft.enchantment||0);
+  const id=baseId(item.id);
+  const catalogItem=items.find(candidate=>candidate.id===id);
+  draft.item={id,name:catalogItem?.name||(item.manual?id:item.name)};
+  draft.query=draft.item.name;
+  draft.enchantment=Math.max(0,Math.min(4,enchantment));
+  renderCaptureDrafts();
+}
+function loadCaptureScript(src){
+  if(window.Tesseract) return Promise.resolve();
+  const existing=document.querySelector(`script[data-capture-ocr="true"]`);
+  if(existing) return new Promise((resolve,reject)=>{
+    existing.addEventListener("load",resolve,{once:true});
+    existing.addEventListener("error",reject,{once:true});
+  });
+  return new Promise((resolve,reject)=>{
+    const script=document.createElement("script");
+    script.src=src;script.async=true;script.dataset.captureOcr="true";
+    script.onload=resolve;script.onerror=()=>{
+      script.remove();
+      reject(new Error("No se pudo descargar el lector OCR."));
+    };
+    document.head.appendChild(script);
+  });
+}
+async function getCaptureOcrWorker(){
+  if(captureOcrWorker) return captureOcrWorker;
+  if(captureOcrWorkerPromise) return captureOcrWorkerPromise;
+  captureOcrWorkerPromise=(async()=>{
+    await loadCaptureScript("https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js");
+    if(!window.Tesseract) throw new Error("El lector OCR no está disponible.");
+    const worker=await window.Tesseract.createWorker("eng",1,{
+      logger:message=>{
+        if(message.progress>0&&message.progress<1){
+          setCaptureStatus(`Preparando reconocimiento local… ${Math.round(message.progress*100)}%`,true);
+        }
+      }
+    });
+    await worker.setParameters({
+      tessedit_char_whitelist:"0123456789",
+      tessedit_pageseg_mode:window.Tesseract.PSM?.SINGLE_WORD||"8",
+      preserve_interword_spaces:"0"
+    });
+    captureOcrWorker=worker;
+    return worker;
+  })().catch(error=>{
+    captureOcrWorkerPromise=null;
+    throw error;
+  });
+  return captureOcrWorkerPromise;
+}
+function quantityCanvas(draft){
+  const img=$("captureImage");
+  const side=Math.max(30,Number(draft.slotSize)||captureSlotSize());
+  const sx=Math.max(0,draft.x-side*.05);
+  const sy=Math.max(0,draft.y+side*.02);
+  const sw=Math.min(side*.55,img.naturalWidth-sx);
+  const sh=Math.min(side*.5,img.naturalHeight-sy);
+  const canvas=document.createElement("canvas");
+  canvas.width=300;canvas.height=180;
+  const ctx=canvas.getContext("2d",{willReadFrequently:true});
+  ctx.fillStyle="#000";ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.imageSmoothingEnabled=false;
+  ctx.drawImage(img,sx,sy,sw,sh,0,0,canvas.width,canvas.height);
+  const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);
+  for(let i=0;i<pixels.data.length;i+=4){
+    const r=pixels.data[i],g=pixels.data[i+1],b=pixels.data[i+2];
+    const brightness=.299*r+.587*g+.114*b;
+    const value=brightness>165?255:0;
+    pixels.data[i]=value;pixels.data[i+1]=value;pixels.data[i+2]=value;pixels.data[i+3]=255;
+  }
+  ctx.putImageData(pixels,0,0);
+  return canvas;
+}
+function queueQuantityRecognition(uid){
+  captureOcrQueue=captureOcrQueue.then(()=>recognizeCaptureQuantity(uid)).catch(()=>{});
+}
+async function recognizeCaptureQuantity(uid){
+  const draft=captureDrafts.find(item=>item.uid===uid);
+  if(!draft||draft.x==null) return;
+  draft.ocrState="busy";draft.ocrStatus="Leyendo cantidad en este dispositivo…";
+  renderCaptureDrafts();
+  try{
+    const worker=await getCaptureOcrWorker();
+    if(!captureDrafts.some(item=>item.uid===uid)) return;
+    const result=await worker.recognize(quantityCanvas(draft));
+    const digits=String(result?.data?.text||"").replace(/\D/g,"");
+    const quantity=Number(digits);
+    if(draft.quantityEdited){
+      draft.ocrState="done";
+      draft.ocrStatus="Cantidad revisada manualmente.";
+    }else if(Number.isFinite(quantity)&&quantity>0&&quantity<=999999){
+      draft.quantity=Math.floor(quantity);
+      draft.ocrState="done";
+      draft.ocrStatus=`Cantidad detectada: ${draft.quantity}. Confírmala antes de importar.`;
+    }else{
+      draft.quantity=Math.max(1,Number(draft.quantity)||1);
+      draft.ocrState="error";
+      draft.ocrStatus="No se vio una cantidad; se usará 1. Puedes corregirla.";
+    }
+  }catch(_){
+    draft.ocrState="error";
+    draft.ocrStatus="OCR no disponible. Escribe la cantidad manualmente.";
+  }
+  renderCaptureDrafts();
+  const pending=captureDrafts.filter(item=>item.ocrState==="busy").length;
+  setCaptureStatus(pending?`Leyendo ${pending} casilla${pending===1?"":"s"}…`:"Revisa los objetos y cantidades antes de añadirlos al cofre.",pending>0);
+}
+
+async function importCaptureDrafts(){
+  if(!captureDrafts.length||captureDrafts.some(draft=>!draft.item)) return;
+  const button=$("importChestItemsBtn");
+  const importedCount=captureDrafts.length;
+  button.disabled=true;button.textContent="Añadiendo al cofre…";
+  const list=getActiveTransportItems();
+  const server=$("server").value;
+  for(const draft of captureDrafts){
+    const id=draft.item.id+(Number(draft.enchantment)>0?`@${Number(draft.enchantment)}`:"");
+    const quality=Number(draft.quality)||1;
+    const quantity=Math.max(1,Math.floor(Number(draft.quantity)||1));
+    const existing=list.find(item=>item.server===server&&item.id===id&&Number(item.quality)===quality);
+    if(existing){
+      existing.quantity=Math.max(1,Number(existing.quantity)||1)+quantity;
+    }else{
+      list.unshift({
+        uid:`${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`,
+        server,id,name:draft.item.name,quality,quantity,prices:normalizePrices([]),updatedAt:0
+      });
+    }
+  }
+  saveActiveTransportItems(list);
+  captureDrafts=[];
+  renderCaptureDrafts();
+  closeChestImport();
+  renderTransportPlanner();
+  $("transportStatus").textContent=`${importedCount} objeto${importedCount===1?"":"s"} importado${importedCount===1?"":"s"}. Consultando precios…`;
+  try{
+    await refreshTransportPrices();
+  }finally{
+    button.disabled=false;
+    updateCaptureImportButton();
+  }
+}
+
 async function loadItems(){
   try{
-    const cacheKey = "albion-items-lite-v2-deduped-v1";
+    const cacheKey = "albion-items-lite-v2-deduped-v2";
     const cached = sessionStorage.getItem(cacheKey);
     if(cached){
       items = JSON.parse(cached);
@@ -509,7 +871,7 @@ function renderTransportPlanner(){
 
   if(!list.length){
     $("transportRecommendation").className="transport-recommendation empty";
-    $("transportRecommendation").innerHTML=`<strong>Tu cofre está vacío</strong><small>Entra en Mercado, consulta un objeto y pulsa “Añadir este objeto al cofre”.</small>`;
+    $("transportRecommendation").innerHTML=`<strong>Tu cofre está vacío</strong><small>Importa una captura del cofre o añade objetos desde Mercado.</small>`;
     $("transportStatus").textContent="";
     $("transportSummary").innerHTML="";
     $("transportRoutes").innerHTML=`<div class="transport-empty">Cuando añadas objetos, aquí compararemos todas las ciudades.</div>`;
@@ -790,6 +1152,94 @@ document.querySelectorAll("[data-view-target]").forEach(button=>{
 });
 window.addEventListener("hashchange",()=>renderView());
 $("addTransportItemBtn").addEventListener("click",()=>navigateToView("market",true));
+$("importCaptureBtn").addEventListener("click",openChestImport);
+$("closeChestImportBtn").addEventListener("click",closeChestImport);
+$("chestCaptureInput").addEventListener("change",event=>{
+  handleCaptureFile(event.target.files?.[0]);
+  event.target.value="";
+});
+$("captureStage").addEventListener("click",event=>{
+  if(!$("captureImage").naturalWidth) return;
+  addCaptureDraft(captureCoordinates(event));
+});
+$("captureStage").addEventListener("keydown",event=>{
+  if(event.key!=="Enter"&&event.key!==" ") return;
+  event.preventDefault();
+  addCaptureDraft();
+});
+$("captureSlotSize").addEventListener("input",event=>{
+  $("captureSlotSizeLabel").textContent=`${event.target.value} px`;
+  recropCaptureDrafts();
+});
+$("clearCaptureMarksBtn").addEventListener("click",clearCaptureDrafts);
+$("addManualCaptureItemBtn").addEventListener("click",()=>addCaptureDraft());
+$("importChestItemsBtn").addEventListener("click",importCaptureDrafts);
+$("captureDrafts").addEventListener("input",event=>{
+  const card=event.target.closest("[data-capture-id]");
+  const field=event.target.dataset.field;
+  if(!card||!field) return;
+  const draft=captureDrafts.find(item=>item.uid===card.dataset.captureId);
+  if(!draft) return;
+  if(field==="item"){
+    draft.query=event.target.value;
+    if(draft.item&&draft.query!==draft.item.name) draft.item=null;
+    renderCaptureSuggestions(draft,card);
+    updateCaptureImportButton();
+  }else if(field==="quantity"){
+    draft.quantity=Math.max(1,Math.floor(Number(event.target.value)||1));
+    draft.quantityEdited=true;
+    draft.ocrState="done";
+    draft.ocrStatus="Cantidad revisada manualmente.";
+    card.querySelector(".capture-ocr-status span").textContent=draft.ocrStatus;
+    card.querySelector(".capture-ocr-status").className="capture-ocr-status good";
+  }
+});
+$("captureDrafts").addEventListener("change",event=>{
+  const card=event.target.closest("[data-capture-id]");
+  const field=event.target.dataset.field;
+  if(!card||!field) return;
+  const draft=captureDrafts.find(item=>item.uid===card.dataset.captureId);
+  if(!draft) return;
+  if(field==="enchantment") draft.enchantment=Number(event.target.value)||0;
+  if(field==="quality") draft.quality=Number(event.target.value)||1;
+  if(field==="quantity") draft.quantity=Math.max(1,Math.floor(Number(event.target.value)||1));
+});
+$("captureDrafts").addEventListener("focusin",event=>{
+  if(event.target.dataset.field!=="item") return;
+  const card=event.target.closest("[data-capture-id]");
+  const draft=captureDrafts.find(item=>item.uid===card?.dataset.captureId);
+  if(draft) renderCaptureSuggestions(draft,card);
+});
+$("captureDrafts").addEventListener("keydown",event=>{
+  if(event.target.dataset.field!=="item"||event.key!=="Enter") return;
+  const card=event.target.closest("[data-capture-id]");
+  const draft=captureDrafts.find(item=>item.uid===card?.dataset.captureId);
+  if(!draft) return;
+  renderCaptureSuggestions(draft,card);
+  if(draft.matches[0]){
+    event.preventDefault();
+    selectCaptureItem(draft,draft.matches[0]);
+  }
+});
+$("captureDrafts").addEventListener("click",event=>{
+  const card=event.target.closest("[data-capture-id]");
+  const action=event.target.closest("[data-action]")?.dataset.action;
+  if(!card||!action) return;
+  const draft=captureDrafts.find(item=>item.uid===card.dataset.captureId);
+  if(!draft) return;
+  if(action==="remove-capture"){
+    captureDrafts=captureDrafts.filter(item=>item.uid!==draft.uid);
+    renderCaptureDrafts();
+  }else if(action==="retry-ocr"){
+    draft.slotSize=captureSlotSize();
+    draft.crop=cropCaptureDraft(draft);
+    draft.quantityEdited=false;
+    queueQuantityRecognition(draft.uid);
+  }else if(action==="select-capture-item"){
+    const index=Number(event.target.closest("[data-index]")?.dataset.index);
+    if(draft.matches[index]) selectCaptureItem(draft,draft.matches[index]);
+  }
+});
 $("quality").addEventListener("change",()=>{
   saveSettings();
   if(selected){
@@ -898,6 +1348,12 @@ $("shareBtn").addEventListener("click",async()=>{
 
 document.addEventListener("click",e=>{
   if(!e.target.closest(".search-field")) $("suggestions").classList.add("hidden");
+  if(!e.target.closest(".capture-item-search")) document.querySelectorAll(".capture-draft-suggestions").forEach(box=>box.classList.add("hidden"));
+});
+
+window.addEventListener("beforeunload",()=>{
+  if(captureObjectUrl) URL.revokeObjectURL(captureObjectUrl);
+  captureOcrWorker?.terminate?.();
 });
 
 window.addEventListener("beforeinstallprompt",e=>{
