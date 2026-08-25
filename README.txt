@@ -1,4 +1,4 @@
-ALBION MARKET POCKET — V2.3
+ALBION MARKET POCKET — V2.4
 
 NOVEDADES
 ---------
@@ -7,6 +7,7 @@ NOVEDADES
 - Preferencias persistentes de servidor, calidad y encantamiento.
 - Calidades: Normal, Bueno, Notable, Sobresaliente y Obra maestra.
 - Nueva interfaz e iconos en tonos morados.
+- Pantallas separadas para Mercado y Transporte con navegación superior.
 - Cofre con varios objetos, calidades y cantidades.
 - Ciudad de origen común para toda la carga.
 - Comparación del valor total del cofre en cada mercado.

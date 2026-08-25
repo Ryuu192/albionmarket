@@ -107,6 +107,30 @@ function loadSettings(){
   }
   if(s.marketFee != null) $("plannerFee").value = s.marketFee;
 }
+function viewFromHash(){
+  return location.hash.toLowerCase()==="#transport"?"transport":"market";
+}
+function renderView(view=viewFromHash()){
+  const active=view==="transport"?"transport":"market";
+  document.querySelectorAll("[data-screen]").forEach(section=>{
+    section.classList.toggle("view-hidden",section.dataset.screen!==active);
+  });
+  document.querySelectorAll("[data-view-target]").forEach(button=>{
+    const on=button.dataset.viewTarget===active;
+    button.classList.toggle("active",on);
+    if(on) button.setAttribute("aria-current","page");
+    else button.removeAttribute("aria-current");
+  });
+  if(active==="transport") renderTransportPlanner();
+  window.scrollTo({top:0,behavior:"auto"});
+}
+function navigateToView(view,focusSearch=false){
+  const target=view==="transport"?"transport":"market";
+  const hash=`#${target}`;
+  if(location.hash===hash) renderView(target);
+  else location.hash=hash;
+  if(focusSearch) setTimeout(()=>$("search").focus(),0);
+}
 
 async function loadItems(){
   try{
@@ -470,18 +494,28 @@ function comparableDifference(destination,origin,totalItems){
 function renderTransportPlanner(){
   const list=getActiveTransportItems();
   const section=$("transportPlanner");
-  section.classList.toggle("hidden",!list.length);
-  if(!list.length){
-    $("transportSummary").innerHTML="";
-    $("transportRoutes").innerHTML="";
-    $("transportItems").innerHTML="";
-    return;
-  }
+  section.classList.remove("hidden");
+  $("transportNavCount").textContent=list.length;
+  $("transportNavCount").classList.toggle("hidden",!list.length);
+  $("refreshTransportBtn").disabled=!list.length;
+  $("clearTransportBtn").disabled=!list.length;
 
   const config=getTransportConfig(list);
   $("transportOrigin").innerHTML=TRANSPORT_ORIGINS.map(city=>`<option value="${esc(city)}">${esc(city)}</option>`).join("");
   $("transportOrigin").value=config.origin;
   $("transportSaleMode").value=config.saleMode;
+  $("transportRoutesTitle").classList.toggle("hidden",!list.length);
+  $("transportItemsTitle").classList.toggle("hidden",!list.length);
+
+  if(!list.length){
+    $("transportRecommendation").className="transport-recommendation empty";
+    $("transportRecommendation").innerHTML=`<strong>Tu cofre está vacío</strong><small>Entra en Mercado, consulta un objeto y pulsa “Añadir este objeto al cofre”.</small>`;
+    $("transportStatus").textContent="";
+    $("transportSummary").innerHTML="";
+    $("transportRoutes").innerHTML=`<div class="transport-empty">Cuando añadas objetos, aquí compararemos todas las ciudades.</div>`;
+    $("transportItems").innerHTML="";
+    return;
+  }
 
   const {calculations,destinations,best,origin}=evaluateTransport(list,config);
   const totalUnits=calculations.reduce((sum,calc)=>sum+calc.quantity,0);
@@ -577,6 +611,7 @@ function addCurrentToTransport(){
   saveActiveTransportItems(list);
   renderTransportPlanner();
   $("transportStatus").textContent=`${selected.name} añadido al cofre.`;
+  navigateToView("transport");
 }
 function chunked(list,size){
   const chunks=[];
@@ -750,6 +785,11 @@ $("search").addEventListener("input",e=>{
   clearTimeout(debounceTimer);
   debounceTimer=setTimeout(()=>renderSuggestions(e.target.value),130);
 });
+document.querySelectorAll("[data-view-target]").forEach(button=>{
+  button.addEventListener("click",()=>navigateToView(button.dataset.viewTarget));
+});
+window.addEventListener("hashchange",()=>renderView());
+$("addTransportItemBtn").addEventListener("click",()=>navigateToView("market",true));
 $("quality").addEventListener("change",()=>{
   saveSettings();
   if(selected){
@@ -876,4 +916,5 @@ if("serviceWorker" in navigator){
 loadSettings();
 renderQuickLists();
 renderTransportPlanner();
+renderView();
 loadItems();

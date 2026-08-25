@@ -13,19 +13,27 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <p class="eyebrow">ALBION ONLINE</p>
-      <h1>Market Pocket <span class="version">v2.3</span></h1>
+  <header class="app-header">
+    <div class="topbar">
+      <div>
+        <p class="eyebrow">ALBION ONLINE</p>
+        <h1>Market Pocket <span class="version">v2.4</span></h1>
+      </div>
+      <div class="top-actions">
+        <button id="shareBtn" class="icon-btn" title="Compartir">↗</button>
+        <button id="installBtn" class="ghost hidden">Instalar</button>
+      </div>
     </div>
-    <div class="top-actions">
-      <button id="shareBtn" class="icon-btn" title="Compartir">↗</button>
-      <button id="installBtn" class="ghost hidden">Instalar</button>
-    </div>
+    <nav class="app-nav" aria-label="Navegación principal">
+      <div class="app-nav-inner">
+        <button id="marketNavBtn" class="nav-tab active" data-view-target="market" aria-current="page">Mercado</button>
+        <button id="transportNavBtn" class="nav-tab" data-view-target="transport">Transporte <span id="transportNavCount" class="nav-count hidden">0</span></button>
+      </div>
+    </nav>
   </header>
 
   <main>
-    <section id="favoriteSection" class="quick-section hidden">
+    <section id="favoriteSection" class="quick-section hidden" data-screen="market">
       <div class="section-title compact">
         <h2>★ Favoritos</h2>
         <button id="clearFavorites" class="text-btn">Limpiar</button>
@@ -33,7 +41,7 @@
       <div id="favorites" class="chips"></div>
     </section>
 
-    <section id="recentSection" class="quick-section hidden">
+    <section id="recentSection" class="quick-section hidden" data-screen="market">
       <div class="section-title compact">
         <h2>Recientes</h2>
         <button id="clearRecent" class="text-btn">Limpiar</button>
@@ -41,7 +49,7 @@
       <div id="recents" class="chips"></div>
     </section>
 
-    <section class="panel">
+    <section class="panel" data-screen="market">
       <div class="grid2">
         <div class="field">
           <label for="server">Servidor</label>
@@ -105,7 +113,7 @@
       <p id="error" class="error hidden"></p>
     </section>
 
-    <section id="summary" class="summary hidden">
+    <section id="summary" class="summary hidden" data-screen="market">
       <article class="best-card">
         <span>Comprar más barato</span>
         <strong id="bestBuyPrice">—</strong>
@@ -118,7 +126,7 @@
       </article>
     </section>
 
-    <section id="routeSection" class="panel hidden">
+    <section id="routeSection" class="panel hidden" data-screen="market">
       <div class="section-title">
         <div>
           <p class="eyebrow">MI COFRE</p>
@@ -145,13 +153,14 @@
       <p id="routeText" class="hint">La app comparará este objeto junto con el resto de tu cofre.</p>
     </section>
 
-    <section id="transportPlanner" class="panel hidden">
+    <section id="transportPlanner" class="panel view-hidden" data-screen="transport">
       <div class="section-title planner-header">
         <div>
           <p class="eyebrow">COFRE Y TRANSPORTE</p>
           <h2>¿Dónde conviene vender?</h2>
         </div>
         <div class="planner-actions">
+          <button id="addTransportItemBtn" class="ghost">Añadir objeto</button>
           <button id="refreshTransportBtn" class="ghost">Actualizar precios</button>
           <button id="clearTransportBtn" class="text-btn danger-text">Vaciar</button>
         </div>
@@ -180,12 +189,12 @@
       <p id="transportStatus" class="hint" aria-live="polite"></p>
       <div id="transportSummary" class="transport-summary"></div>
 
-      <div class="section-title cargo-title">
+      <div id="transportRoutesTitle" class="section-title cargo-title">
         <h3>Comparación por ciudad</h3>
       </div>
       <div id="transportRoutes" class="transport-routes"></div>
 
-      <div class="section-title cargo-title">
+      <div id="transportItemsTitle" class="section-title cargo-title">
         <h3>Objetos de la carga</h3>
       </div>
       <div id="transportItems" class="transport-items"></div>
@@ -193,7 +202,7 @@
       <p class="hint">Venta instantánea usa la orden de compra más alta; publicar usa la venta más barata como referencia. Los datos son comunitarios y no indican cuántas unidades siguen disponibles. La recomendación no incluye riesgo, distancia ni capacidad de carga.</p>
     </section>
 
-    <section id="resultsSection" class="panel hidden">
+    <section id="resultsSection" class="panel hidden" data-screen="market">
       <div class="section-title">
         <h2>Precios por ciudad</h2>
         <button id="refreshBtn" class="ghost">Actualizar</button>
@@ -202,7 +211,7 @@
       <div id="results" class="results"></div>
     </section>
 
-    <section id="historySection" class="panel hidden">
+    <section id="historySection" class="panel hidden" data-screen="market">
       <div class="section-title">
         <div>
           <p class="eyebrow">TENDENCIA</p>
@@ -232,7 +241,7 @@
       <p class="hint">El histórico de Albion Online Data Project corresponde a ventas registradas y puede tener huecos si no hubo suficientes datos.</p>
     </section>
 
-    <section class="notice">
+    <section class="notice" data-screen="market">
       <strong>Importante:</strong> los precios son comunitarios. Mira siempre la antigüedad del dato antes de transportar plata o comprar grandes cantidades.
     </section>
   </main>
