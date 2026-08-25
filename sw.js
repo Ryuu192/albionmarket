@@ -1,4 +1,4 @@
-const CACHE="albion-market-pocket-v2-1-transport-v1";
+const CACHE="albion-market-pocket-v2-1-search-v1";
 const ASSETS=[
   "./",
   "./index.html",

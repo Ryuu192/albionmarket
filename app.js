@@ -58,6 +58,22 @@ function normalizeItem(obj){
   if(!id) return null;
   return {id, name: localizedName(obj)};
 }
+function compactItemCatalog(list){
+  const unique = new Map();
+  for(const obj of list){
+    const item = normalizeItem(obj);
+    if(!item) continue;
+    const id = baseId(item.id);
+    if(id.includes("_UNTRADEABLE")) continue;
+
+    const score = (item.id === id ? 2 : 0) + (item.name !== "Objeto" ? 1 : 0);
+    const previous = unique.get(id);
+    if(!previous || score > previous.score){
+      unique.set(id, {id, name:item.name, score});
+    }
+  }
+  return [...unique.values()].map(({id,name})=>({id,name}));
+}
 function ageInfo(dateStr){
   if(!dateStr || String(dateStr).startsWith("0001-")) return {label:"Sin datos", cls:"very-stale", hours:Infinity};
   const iso = /z$/i.test(dateStr) ? dateStr : `${dateStr}Z`;
@@ -93,7 +109,7 @@ function loadSettings(){
 
 async function loadItems(){
   try{
-    const cacheKey = "albion-items-lite-v2";
+    const cacheKey = "albion-items-lite-v2-deduped-v1";
     const cached = sessionStorage.getItem(cacheKey);
     if(cached){
       items = JSON.parse(cached);
@@ -104,7 +120,7 @@ async function loadItems(){
     if(!res.ok) throw new Error("No se pudo descargar el catálogo.");
     const raw = await res.json();
     const list = Array.isArray(raw) ? raw : (raw.items || raw.Items || []);
-    items = list.map(normalizeItem).filter(Boolean).filter(x => !x.id.includes("_UNTRADEABLE"));
+    items = compactItemCatalog(list);
     try{ sessionStorage.setItem(cacheKey, JSON.stringify(items)); }catch(_){}
     $("searchStatus").textContent = `${items.length.toLocaleString("es-UY")} objetos listos.`;
   }catch(e){
