@@ -1,14 +1,16 @@
-ALBION MARKET POCKET — V2.1
+ALBION MARKET POCKET — V2.2
 
 NOVEDADES
 ---------
 - Favoritos guardados en el celular.
 - Búsquedas recientes.
 - Preferencias persistentes de servidor, calidad y encantamiento.
-- Mejor ruta de arbitraje instantáneo entre ciudades.
-- Plan de transporte con varios objetos, cantidades, orígenes y destinos.
-- Rutas agrupadas, recomendación de la más rentable y actualización por lotes.
-- Calculadora de cantidad + comisión/impuesto editable.
+- Cofre con varios objetos, calidades y cantidades.
+- Ciudad de origen común para toda la carga.
+- Comparación del valor total del cofre en cada mercado.
+- Recomendación de destino y mejor ciudad individual para cada objeto.
+- Venta instantánea o publicación de órdenes, con impuestos/costes editables.
+- Actualización de precios de toda la carga por lotes.
 - Ordenar ciudades por compra, venta o frescura.
 - Historial de ventas por ciudad (7, 14 o 30 días).
 - Gráfico sin librerías externas.
@@ -34,6 +36,6 @@ FUENTES
 NOTA
 ----
 Los datos del mercado son comunitarios. La app muestra antigüedad del dato.
-La calculadora de ruta usa el precio de venta más barato de la ciudad de origen
-y la orden de compra más alta del destino. La comisión es manual para no asumir
-un porcentaje incorrecto para tu situación.
+El modo de venta instantánea usa la orden de compra más alta. El modo de
+publicación usa la venta más barata como referencia de mercado. Los costes son
+manuales para no asumir un porcentaje incorrecto para tu situación.

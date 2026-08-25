@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#17130e" />
-  <meta name="description" content="Mercado móvil de Albion Online: precios, favoritos, rutas, carga e historial." />
+  <meta name="description" content="Mercado móvil de Albion Online: precios, favoritos, cofre, transporte e historial." />
   <meta name="apple-mobile-web-app-title" content="Albion Market" />
   <title>Albion Market Pocket</title>
   <link rel="manifest" href="manifest.webmanifest" />
@@ -16,7 +16,7 @@
   <header class="topbar">
     <div>
       <p class="eyebrow">ALBION ONLINE</p>
-      <h1>Market Pocket <span class="version">v2.1</span></h1>
+      <h1>Market Pocket <span class="version">v2.2</span></h1>
     </div>
     <div class="top-actions">
       <button id="shareBtn" class="icon-btn" title="Compartir">↗</button>
@@ -121,48 +121,35 @@
     <section id="routeSection" class="panel hidden">
       <div class="section-title">
         <div>
-          <p class="eyebrow">TRANSPORTE</p>
-          <h2>Ruta para este objeto</h2>
+          <p class="eyebrow">MI COFRE</p>
+          <h2>Añadir a la carga</h2>
         </div>
-        <span id="routeBadge" class="badge">—</span>
+        <span id="routeBadge" class="badge good">Objeto propio</span>
       </div>
 
-      <div class="grid2 route-controls">
-        <div class="field">
-          <label for="routeFrom">Comprar en</label>
-          <select id="routeFrom"></select>
-        </div>
-        <div class="field">
-          <label for="routeTo">Vender en</label>
-          <select id="routeTo"></select>
-        </div>
+      <div class="hidden" aria-hidden="true">
+        <select id="routeFrom"></select>
+        <select id="routeTo"></select>
+        <input id="marketFee" type="number" value="0" />
+        <div id="routeProfit"></div>
+        <button id="optimizeTransportBtn" type="button"></button>
       </div>
 
-      <div id="routeText" class="route-main">—</div>
-
-      <div class="grid3">
+      <div class="chest-add-grid">
         <div class="field">
           <label for="quantity">Cantidad</label>
           <input id="quantity" type="number" min="1" step="1" value="1" inputmode="numeric" />
         </div>
-        <div class="field">
-          <label for="marketFee">Coste/Impuesto (%)</label>
-          <input id="marketFee" type="number" min="0" max="100" step="0.1" value="0" inputmode="decimal" />
-        </div>
-        <div class="field">
-          <label>Ganancia estimada</label>
-          <div id="routeProfit" class="fake-input profit">—</div>
-        </div>
+        <button id="addToTransport" class="primary transport-add">Añadir este objeto al cofre</button>
       </div>
-      <p class="hint">El porcentaje es editable para que uses la comisión real que corresponda a tu cuenta y tipo de venta. No incluye riesgo ni coste del transporte.</p>
-      <button id="addToTransport" class="primary transport-add">Agregar al plan de transporte</button>
+      <p id="routeText" class="hint">La app comparará este objeto junto con el resto de tu cofre.</p>
     </section>
 
     <section id="transportPlanner" class="panel hidden">
       <div class="section-title planner-header">
         <div>
-          <p class="eyebrow">CARGA GUARDADA</p>
-          <h2>Plan de transporte</h2>
+          <p class="eyebrow">COFRE Y TRANSPORTE</p>
+          <h2>¿Dónde conviene vender?</h2>
         </div>
         <div class="planner-actions">
           <button id="refreshTransportBtn" class="ghost">Actualizar precios</button>
@@ -172,19 +159,29 @@
 
       <div id="transportRecommendation" class="transport-recommendation"></div>
 
-      <div class="planner-settings">
-        <div class="field planner-fee">
-          <label for="plannerFee">Coste/Impuesto global (%)</label>
+      <div class="planner-settings chest-settings">
+        <div class="field">
+          <label for="transportOrigin">Ciudad del cofre</label>
+          <select id="transportOrigin"></select>
+        </div>
+        <div class="field">
+          <label for="transportSaleMode">Forma de venta</label>
+          <select id="transportSaleMode">
+            <option value="instant">Venta instantánea</option>
+            <option value="listing">Publicar orden de venta</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="plannerFee">Impuestos/Costes (%)</label>
           <input id="plannerFee" type="number" min="0" max="100" step="0.1" value="0" inputmode="decimal" />
         </div>
-        <button id="optimizeTransportBtn" class="ghost">Optimizar rutas</button>
       </div>
 
       <p id="transportStatus" class="hint" aria-live="polite"></p>
       <div id="transportSummary" class="transport-summary"></div>
 
       <div class="section-title cargo-title">
-        <h3>Rutas agrupadas</h3>
+        <h3>Comparación por ciudad</h3>
       </div>
       <div id="transportRoutes" class="transport-routes"></div>
 
@@ -193,7 +190,7 @@
       </div>
       <div id="transportItems" class="transport-items"></div>
 
-      <p class="hint">La recomendación usa el precio de venta más barato del origen y la orden de compra más alta del destino. No conoce cuántas unidades siguen disponibles ni incluye riesgo o coste físico del viaje.</p>
+      <p class="hint">Venta instantánea usa la orden de compra más alta; publicar usa la venta más barata como referencia. Los datos son comunitarios y no indican cuántas unidades siguen disponibles. La recomendación no incluye riesgo, distancia ni capacidad de carga.</p>
     </section>
 
     <section id="resultsSection" class="panel hidden">

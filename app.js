@@ -7,19 +7,20 @@ const API_HOSTS = {
 };
 const ITEMS_URL = "https://raw.githubusercontent.com/ao-data/ao-bin-dumps/master/formatted/items.json";
 const CITIES = ["Caerleon","Bridgewatch","Fort Sterling","Lymhurst","Martlock","Thetford","Brecilien","Black Market"];
+const TRANSPORT_ORIGINS = CITIES.filter(city=>city!=="Black Market");
 const SERVER_NAMES = {west:"Américas",europe:"Europa",east:"Asia"};
 const QUALITY_NAMES = {1:"Normal",2:"Buena",3:"Sobresaliente",4:"Excelente",5:"Obra maestra"};
 const STORE = {
   settings: "amp-settings-v2",
   favorites: "amp-favorites-v2",
   recent: "amp-recent-v2",
-  transport: "amp-transport-v1"
+  transport: "amp-transport-v1",
+  transportConfig: "amp-transport-config-v2"
 };
 
 let items = [];
 let selected = null;
 let lastPrices = [];
-let lastRoute = null;
 let installPrompt = null;
 let debounceTimer = null;
 let transportInputTimer = null;
@@ -96,15 +97,15 @@ function saveSettings(){
     enchantment:$("enchantment").value,
     quality:$("quality").value,
     quantity:$("quantity").value,
-    marketFee:$("marketFee").value
+    marketFee:$("plannerFee").value
   });
 }
 function loadSettings(){
   const s = getStore(STORE.settings, {});
-  for(const id of ["server","sort","enchantment","quality","quantity","marketFee"]){
+  for(const id of ["server","sort","enchantment","quality","quantity"]){
     if(s[id] != null && $(id)) $(id).value = s[id];
   }
-  $("plannerFee").value = $("marketFee").value;
+  if(s.marketFee != null) $("plannerFee").value = s.marketFee;
 }
 
 async function loadItems(){
@@ -242,12 +243,9 @@ function renderQuickLists(){
 function resetPriceView(){
   fetchSeq++;
   lastPrices = [];
-  lastRoute = null;
   for(const id of ["summary","routeSection","resultsSection","historySection"]){
     $(id).classList.add("hidden");
   }
-  $("routeFrom").innerHTML = "";
-  $("routeTo").innerHTML = "";
   $("addToTransport").disabled = true;
   $("historyStats").classList.add("hidden");
   $("chartEmpty").classList.remove("hidden");
@@ -327,72 +325,18 @@ function sortPrices(arr){
   return copy;
 }
 function currentFee(){
-  return Math.min(100,Math.max(0,Number($("marketFee").value)||0));
+  return Math.min(100,Math.max(0,Number($("plannerFee").value)||0));
 }
-function routeForCities(arr,fromCity,toCity,feePct=currentFee()){
-  const from=arr.find(x=>x.city===fromCity);
-  const to=arr.find(x=>x.city===toCity);
-  if(!from?.sell || !to?.buy || from.city===to.city) return null;
-  const revenue=to.buy*(1-feePct/100);
-  const net=revenue-from.sell;
-  const margin=net/from.sell*100;
-  return {from,to,gross:to.buy-from.sell,net,margin};
-}
-function bestRoute(arr,feePct=currentFee()){
-  let best = null;
-  for(const from of arr){
-    if(!from.sell) continue;
-    for(const to of arr){
-      if(from.city===to.city || !to.buy) continue;
-      const route=routeForCities(arr,from.city,to.city,feePct);
-      if(!route) continue;
-      if(!best || route.net>best.net || (route.net===best.net && route.margin>best.margin)) best=route;
-    }
+function updateChestAddPreview(){
+  const quantity=Math.max(1,Math.floor(Number($("quantity").value)||1));
+  const citiesWithData=lastPrices.filter(row=>row.buy||row.sell).length;
+  $("addToTransport").disabled=!selected||!citiesWithData;
+  if(selected&&lastPrices.length){
+    $("routeText").textContent=`${quantity} unidad${quantity===1?"":"es"} · precios disponibles en ${citiesWithData} mercado${citiesWithData===1?"":"s"}.`;
   }
-  return best;
-}
-function routeOptions(type,selectedCity){
-  return lastPrices.map(x=>{
-    const value=type==="from"?x.sell:x.buy;
-    const label=value?`${x.city} · ${money(value)} 🪙`:`${x.city} · sin datos`;
-    return `<option value="${esc(x.city)}" ${x.city===selectedCity?"selected":""} ${value?"":"disabled"}>${esc(label)}</option>`;
-  }).join("");
-}
-function populateRouteControls(route){
-  $("routeFrom").innerHTML=routeOptions("from",route?.from.city);
-  $("routeTo").innerHTML=routeOptions("to",route?.to.city);
-  if(route){
-    $("routeFrom").value=route.from.city;
-    $("routeTo").value=route.to.city;
-  }
-}
-function updateRouteProfit(){
-  lastRoute=routeForCities(lastPrices,$("routeFrom").value,$("routeTo").value);
-  if(!lastRoute){
-    $("routeText").textContent="Elige dos ciudades diferentes con precios disponibles.";
-    $("routeProfit").textContent="—";
-    $("routeProfit").classList.remove("negative");
-    $("routeBadge").textContent="Sin datos";
-    $("routeBadge").className="badge";
-    $("addToTransport").disabled=true;
-    saveSettings();
-    return;
-  }
-  const qty = Math.max(1,Math.floor(Number($("quantity").value)||1));
-  const profitEach = lastRoute.net;
-  const total = profitEach*qty;
-  $("routeText").innerHTML = `<strong>${esc(lastRoute.from.city)}</strong> → <strong>${esc(lastRoute.to.city)}</strong><br>
-    Comprar a ${money(lastRoute.from.sell)} 🪙 · vender instantáneo a ${money(lastRoute.to.buy)} 🪙`;
-  $("routeProfit").textContent = `${total>=0?"+":""}${money(total)} 🪙`;
-  $("routeProfit").classList.toggle("negative",total<0);
-  $("routeBadge").textContent = `Neto ${lastRoute.margin>=0?"+":""}${pct(lastRoute.margin)}`;
-  $("routeBadge").className = `badge ${lastRoute.margin>=0?"good":"bad"}`;
-  $("addToTransport").disabled=false;
   saveSettings();
 }
-function renderPrices(data,resetRoute=true){
-  const previousFrom=resetRoute?"":$("routeFrom").value;
-  const previousTo=resetRoute?"":$("routeTo").value;
+function renderPrices(data){
   lastPrices = normalizePrices(data);
   const buys = lastPrices.filter(x=>x.sell>0).sort((a,b)=>a.sell-b.sell);
   const sells = lastPrices.filter(x=>x.buy>0).sort((a,b)=>b.buy-a.buy);
@@ -405,14 +349,8 @@ function renderPrices(data,resetRoute=true){
   $("bestSellCity").textContent = bestSell?.city || "—";
   $("summary").classList.remove("hidden");
 
-  lastRoute = routeForCities(lastPrices,previousFrom,previousTo) || bestRoute(lastPrices);
-  if(lastRoute){
-    populateRouteControls(lastRoute);
-    $("routeSection").classList.remove("hidden");
-    updateRouteProfit();
-  }else{
-    $("routeSection").classList.add("hidden");
-  }
+  $("routeSection").classList.remove("hidden");
+  updateChestAddPreview();
 
   const sorted = sortPrices(lastPrices);
   $("results").innerHTML = sorted.map(x=>{
@@ -451,61 +389,88 @@ function renderPrices(data,resetRoute=true){
 
 function getTransportItems(){
   const stored=getStore(STORE.transport,[]);
-  return Array.isArray(stored)?stored.filter(x=>x&&x.uid&&x.id&&Array.isArray(x.prices)):[];
+  if(!Array.isArray(stored)) return [];
+  const merged=new Map();
+  for(const item of stored.filter(x=>x&&x.uid&&x.id&&Array.isArray(x.prices))){
+    const key=`${item.server}|${item.id}|${Number(item.quality)||1}`;
+    const previous=merged.get(key);
+    if(!previous){
+      merged.set(key,{...item,quantity:Math.max(1,Math.floor(Number(item.quantity)||1))});
+    }else{
+      previous.quantity+=Math.max(1,Math.floor(Number(item.quantity)||1));
+      if(Number(item.updatedAt||0)>Number(previous.updatedAt||0)){
+        previous.prices=item.prices;
+        previous.updatedAt=item.updatedAt;
+      }
+    }
+  }
+  return [...merged.values()];
 }
 function saveTransportItems(list){
   setStore(STORE.transport,list.slice(0,80));
 }
-function transportCalculation(item){
+function getActiveTransportItems(){
+  const server=$("server").value;
+  return getTransportItems().filter(item=>item.server===server);
+}
+function saveActiveTransportItems(activeList){
+  const server=$("server").value;
+  const otherServers=getTransportItems().filter(item=>item.server!==server);
+  saveTransportItems([...activeList,...otherServers]);
+}
+function getTransportConfig(list=[]){
+  const stored=getStore(STORE.transportConfig,{});
+  const legacyOrigin=list.find(item=>TRANSPORT_ORIGINS.includes(item.from))?.from;
+  return {
+    origin:TRANSPORT_ORIGINS.includes(stored.origin)?stored.origin:(legacyOrigin||"Caerleon"),
+    saleMode:stored.saleMode==="listing"?"listing":"instant"
+  };
+}
+function saveTransportConfig(config){
+  setStore(STORE.transportConfig,config);
+}
+function transportCityLabel(city){
+  return city==="Black Market"?"Black Market (Caerleon)":city;
+}
+function transportQuote(item,city,saleMode,feePct){
   const quantity=Math.max(1,Math.floor(Number(item.quantity)||1));
-  const route=routeForCities(item.prices,item.from,item.to,currentFee());
-  if(!route) return {item,quantity,route:null,investment:0,revenue:0,profit:0,margin:0};
-  const investment=route.from.sell*quantity;
-  const revenue=route.to.buy*(1-currentFee()/100)*quantity;
-  const profit=revenue-investment;
-  const margin=investment?profit/investment*100:0;
-  return {item,quantity,route,investment,revenue,profit,margin};
+  const row=item.prices.find(price=>price.city===city);
+  const unitGross=Number(saleMode==="listing"?row?.sell:row?.buy)||0;
+  const date=saleMode==="listing"?row?.sellDate:row?.buyDate;
+  const unitNet=unitGross*(1-feePct/100);
+  return {city,quantity,unitGross,unitNet,net:unitNet*quantity,date};
 }
-function aggregateTransport(list){
-  const calculations=list.map(transportCalculation);
-  const groups=new Map();
+function evaluateTransport(list,config){
+  const calculations=list.map(item=>({
+    item,
+    quantity:Math.max(1,Math.floor(Number(item.quantity)||1)),
+    quotes:CITIES.map(city=>transportQuote(item,city,config.saleMode,currentFee()))
+  }));
+  const destinations=CITIES.map(city=>{
+    const available=calculations.map(calc=>calc.quotes.find(quote=>quote.city===city)).filter(quote=>quote.unitGross>0);
+    return {
+      city,
+      coverage:available.length,
+      net:available.reduce((sum,quote)=>sum+quote.net,0),
+      worstHours:available.reduce((hours,quote)=>Math.max(hours,ageInfo(quote.date).hours),0)
+    };
+  }).filter(destination=>destination.coverage>0).sort((a,b)=>b.coverage-a.coverage||b.net-a.net);
+  const best=destinations[0]||null;
+  const origin=destinations.find(destination=>destination.city===config.origin)||null;
   for(const calc of calculations){
-    if(!calc.route) continue;
-    const key=`${calc.route.from.city}|${calc.route.to.city}`;
-    if(!groups.has(key)) groups.set(key,{
-      key,from:calc.route.from.city,to:calc.route.to.city,items:0,units:0,
-      investment:0,revenue:0,profit:0,worstHours:0
-    });
-    const group=groups.get(key);
-    group.items++;
-    group.units+=calc.quantity;
-    group.investment+=calc.investment;
-    group.revenue+=calc.revenue;
-    group.profit+=calc.profit;
-    group.worstHours=Math.max(
-      group.worstHours,
-      ageInfo(calc.route.from.sellDate).hours,
-      ageInfo(calc.route.to.buyDate).hours
-    );
+    calc.recommended=best?calc.quotes.find(quote=>quote.city===best.city):null;
+    calc.bestIndividual=calc.quotes.filter(quote=>quote.unitGross>0).sort((a,b)=>b.net-a.net)[0]||null;
   }
-  const routes=[...groups.values()].map(group=>({
-    ...group,margin:group.investment?group.profit/group.investment*100:0
-  })).sort((a,b)=>b.profit-a.profit);
-  return {calculations,routes};
+  return {calculations,destinations,best,origin};
 }
-function transportCityOptions(item,type,selectedCity){
-  return CITIES.map(city=>{
-    const row=item.prices.find(x=>x.city===city);
-    const value=type==="from"?Number(row?.sell||0):Number(row?.buy||0);
-    const label=value?`${city} · ${money(value)} 🪙`:`${city} · sin datos`;
-    return `<option value="${esc(city)}" ${city===selectedCity?"selected":""} ${value?"":"disabled"}>${esc(label)}</option>`;
-  }).join("");
+function comparableDifference(destination,origin,totalItems){
+  if(!origin||destination.coverage!==totalItems||origin.coverage!==totalItems) return null;
+  return destination.net-origin.net;
 }
 function renderTransportPlanner(){
-  const list=getTransportItems();
+  const list=getActiveTransportItems();
   const section=$("transportPlanner");
   section.classList.toggle("hidden",!list.length);
-  $("plannerFee").value=$("marketFee").value;
   if(!list.length){
     $("transportSummary").innerHTML="";
     $("transportRoutes").innerHTML="";
@@ -513,90 +478,91 @@ function renderTransportPlanner(){
     return;
   }
 
-  const {calculations,routes}=aggregateTransport(list);
-  const valid=calculations.filter(x=>x.route);
-  const totalUnits=calculations.reduce((sum,x)=>sum+x.quantity,0);
-  const investment=valid.reduce((sum,x)=>sum+x.investment,0);
-  const profit=valid.reduce((sum,x)=>sum+x.profit,0);
-  const best=routes.find(x=>x.profit>0);
-  const closest=routes[0];
+  const config=getTransportConfig(list);
+  $("transportOrigin").innerHTML=TRANSPORT_ORIGINS.map(city=>`<option value="${esc(city)}">${esc(city)}</option>`).join("");
+  $("transportOrigin").value=config.origin;
+  $("transportSaleMode").value=config.saleMode;
 
-  if(best){
+  const {calculations,destinations,best,origin}=evaluateTransport(list,config);
+  const totalUnits=calculations.reduce((sum,calc)=>sum+calc.quantity,0);
+  const difference=best?comparableDifference(best,origin,list.length):null;
+  const modeText=config.saleMode==="listing"?"publicando órdenes de venta":"vendiendo instantáneamente";
+
+  if(best&&best.city===config.origin&&best.coverage===list.length){
     $("transportRecommendation").className="transport-recommendation good";
-    $("transportRecommendation").innerHTML=`<strong>Conviene más: ${esc(best.from)} → ${esc(best.to)}</strong>
-      <small>Ganancia neta ${best.profit>=0?"+":""}${money(best.profit)} 🪙 · ROI ${best.margin>=0?"+":""}${pct(best.margin)} · ${best.items} objeto${best.items===1?"":"s"}</small>`;
-  }else if(closest){
-    $("transportRecommendation").className="transport-recommendation bad";
-    $("transportRecommendation").innerHTML=`<strong>No hay una ruta rentable con la carga actual</strong>
-      <small>El resultado menos desfavorable es ${esc(closest.from)} → ${esc(closest.to)}: ${money(closest.profit)} 🪙.</small>`;
+    $("transportRecommendation").innerHTML=`<strong>Conviene vender en ${esc(config.origin)} sin transportar</strong>
+      <small>Es el mayor valor total para toda la carga ${esc(modeText)}: ${money(best.net)} 🪙 netas.</small>`;
+  }else if(best){
+    const complete=best.coverage===list.length;
+    $("transportRecommendation").className=`transport-recommendation ${complete?"good":"bad"}`;
+    $("transportRecommendation").innerHTML=`<strong>Destino recomendado: ${esc(transportCityLabel(best.city))}</strong>
+      <small>Desde ${esc(config.origin)} · ${money(best.net)} 🪙 netas${difference==null?"":` · ${difference>=0?"+":""}${money(difference)} 🪙 frente a vender en el origen`}${complete?"":` · solo hay precios para ${best.coverage} de ${list.length} objetos`}.</small>`;
   }else{
     $("transportRecommendation").className="transport-recommendation bad";
-    $("transportRecommendation").innerHTML=`<strong>Faltan precios para calcular las rutas</strong><small>Actualiza la carga o elige ciudades con datos disponibles.</small>`;
+    $("transportRecommendation").innerHTML=`<strong>Faltan precios para calcular el destino</strong><small>Actualiza los precios de la carga e inténtalo de nuevo.</small>`;
   }
 
   $("transportSummary").innerHTML=`
     <div class="stat"><span>Objetos / unidades</span><strong>${list.length} / ${money(totalUnits)}</strong></div>
-    <div class="stat"><span>Inversión total</span><strong>${money(investment)} 🪙</strong></div>
-    <div class="stat"><span>Ganancia neta</span><strong class="${profit>=0?"good":"bad"}">${profit>=0?"+":""}${money(profit)} 🪙</strong></div>`;
+    <div class="stat"><span>Valor recomendado</span><strong>${best?money(best.net)+" 🪙":"—"}</strong></div>
+    <div class="stat"><span>Mejora vs origen</span><strong class="${difference==null?"":difference>=0?"good":"bad"}">${difference==null?"—":`${difference>=0?"+":""}${money(difference)} 🪙`}</strong></div>`;
 
-  $("transportRoutes").innerHTML=routes.length?routes.map(route=>{
-    const age=Number.isFinite(route.worstHours)?ageInfo(new Date(Date.now()-route.worstHours*36e5).toISOString()):{label:"Sin datos",cls:"very-stale"};
-    return `<article class="transport-route-card ${best&&route.key===best.key?"recommended":""}">
+  $("transportRoutes").innerHTML=destinations.length?destinations.map(destination=>{
+    const isBest=best&&destination.city===best.city;
+    const isOrigin=destination.city===config.origin;
+    const age=Number.isFinite(destination.worstHours)?ageInfo(new Date(Date.now()-destination.worstHours*36e5).toISOString()):{label:"Sin datos",cls:"very-stale"};
+    const cityDifference=comparableDifference(destination,origin,list.length);
+    const routeLabel=isOrigin?`Vender en ${config.origin}`:`${config.origin} → ${transportCityLabel(destination.city)}`;
+    return `<article class="transport-route-card ${isBest?"recommended":""} ${isOrigin?"origin":""}">
       <div class="transport-route-head">
-        <strong>${esc(route.from)} → ${esc(route.to)}</strong>
-        ${best&&route.key===best.key?`<span class="marker">recomendada</span>`:`<small>${route.items} objeto${route.items===1?"":"s"}</small>`}
+        <strong>${esc(routeLabel)}</strong>
+        ${isBest?`<span class="marker">mejor total</span>`:isOrigin?`<span class="marker">origen</span>`:`<small>${destination.coverage}/${list.length} objetos</small>`}
       </div>
       <div class="transport-route-metrics">
-        <div class="transport-metric"><span>Inversión</span><strong>${money(route.investment)} 🪙</strong></div>
-        <div class="transport-metric"><span>Ganancia neta</span><strong class="${route.profit>=0?"good":"bad"}">${route.profit>=0?"+":""}${money(route.profit)} 🪙</strong><small>ROI ${route.margin>=0?"+":""}${pct(route.margin)}</small></div>
-        <div class="transport-metric"><span>Dato más viejo</span><strong class="fresh ${age.cls}">${age.label}</strong><small>${money(route.units)} unidades</small></div>
+        <div class="transport-metric"><span>Valor neto</span><strong>${money(destination.net)} 🪙</strong></div>
+        <div class="transport-metric"><span>Diferencia vs origen</span><strong class="${cityDifference==null?"":cityDifference>=0?"good":"bad"}">${cityDifference==null?"—":`${cityDifference>=0?"+":""}${money(cityDifference)} 🪙`}</strong></div>
+        <div class="transport-metric"><span>Cobertura</span><strong>${destination.coverage}/${list.length} objetos</strong><small class="fresh ${age.cls}">${age.label}</small></div>
       </div>
     </article>`;
-  }).join(""):`<div class="transport-empty">No hay rutas calculables.</div>`;
+  }).join(""):`<div class="transport-empty">No hay ciudades con precios disponibles.</div>`;
 
   $("transportItems").innerHTML=calculations.map(calc=>{
     const item=calc.item;
-    const fromAge=calc.route?ageInfo(calc.route.from.sellDate):{label:"Sin datos",cls:"very-stale"};
-    const toAge=calc.route?ageInfo(calc.route.to.buyDate):{label:"Sin datos",cls:"very-stale"};
+    const recommended=calc.recommended?.unitGross?calc.recommended:null;
+    const individual=calc.bestIndividual;
+    const recommendedAge=recommended?ageInfo(recommended.date):{label:"Sin datos",cls:"very-stale"};
+    const individualAge=individual?ageInfo(individual.date):{label:"Sin datos",cls:"very-stale"};
     return `<article class="transport-item" data-transport-id="${esc(item.uid)}">
       <div class="transport-item-head">
         <img src="${imageUrl(item.id,Number(item.quality),96)}" alt="" loading="lazy">
         <div class="transport-item-copy">
           <strong>${esc(item.name)}</strong>
-          <small>${esc(item.id)} · ${esc(QUALITY_NAMES[item.quality]||`Calidad ${item.quality}`)} · ${esc(SERVER_NAMES[item.server]||item.server)}</small>
+          <small>${esc(item.id)} · ${esc(QUALITY_NAMES[item.quality]||`Calidad ${item.quality}`)} · cofre en ${esc(config.origin)}</small>
         </div>
-        <button class="remove-item" data-action="remove" title="Quitar de la carga" aria-label="Quitar ${esc(item.name)}">×</button>
+        <button class="remove-item" data-action="remove" title="Quitar del cofre" aria-label="Quitar ${esc(item.name)}">×</button>
       </div>
-      <div class="transport-item-grid">
+      <div class="transport-item-grid chest-item-grid">
         <div class="field">
-          <label for="qty-${esc(item.uid)}">Cantidad</label>
+          <label for="qty-${esc(item.uid)}">Cantidad en el cofre</label>
           <input id="qty-${esc(item.uid)}" data-field="quantity" type="number" min="1" step="1" inputmode="numeric" value="${calc.quantity}">
-        </div>
-        <div class="field">
-          <label for="from-${esc(item.uid)}">Comprar en</label>
-          <select id="from-${esc(item.uid)}" data-field="from">${transportCityOptions(item,"from",item.from)}</select>
-        </div>
-        <div class="field">
-          <label for="to-${esc(item.uid)}">Vender en</label>
-          <select id="to-${esc(item.uid)}" data-field="to">${transportCityOptions(item,"to",item.to)}</select>
         </div>
       </div>
       <div class="transport-item-metrics">
-        <div class="transport-metric"><span>Compra/unidad</span><strong>${calc.route?money(calc.route.from.sell)+" 🪙":"—"}</strong><small class="fresh ${fromAge.cls}">${fromAge.label}</small></div>
-        <div class="transport-metric"><span>Venta/unidad</span><strong>${calc.route?money(calc.route.to.buy)+" 🪙":"—"}</strong><small class="fresh ${toAge.cls}">${toAge.label}</small></div>
-        <div class="transport-metric"><span>Ganancia neta</span><strong class="${calc.profit>=0?"good":"bad"}">${calc.route?(calc.profit>=0?"+":"")+money(calc.profit)+" 🪙":"—"}</strong><small>${calc.route?`ROI ${calc.margin>=0?"+":""}${pct(calc.margin)}`:"Ruta no válida"}</small></div>
+        <div class="transport-metric"><span>En ${esc(best?transportCityLabel(best.city):"destino")}</span><strong>${recommended?money(recommended.unitNet)+" 🪙/u":"—"}</strong><small class="fresh ${recommendedAge.cls}">${recommendedAge.label}</small></div>
+        <div class="transport-metric"><span>Valor de estas unidades</span><strong>${recommended?money(recommended.net)+" 🪙":"—"}</strong><small>${recommended?money(calc.quantity)+" unidades":"Sin precio"}</small></div>
+        <div class="transport-metric"><span>Mejor destino individual</span><strong>${individual?esc(transportCityLabel(individual.city)):"—"}</strong><small class="fresh ${individualAge.cls}">${individual?money(individual.unitNet)+" 🪙/u · "+individualAge.label:"Sin datos"}</small></div>
       </div>
     </article>`;
   }).join("");
 }
 function addCurrentToTransport(){
-  if(!selected||!lastRoute||!lastPrices.length) return;
-  const list=getTransportItems();
+  if(!selected||!lastPrices.length) return;
+  const list=getActiveTransportItems();
   const id=currentItemId();
   const quality=Number($("quality").value);
   const quantity=Math.max(1,Math.floor(Number($("quantity").value)||1));
   const server=$("server").value;
-  const existing=list.find(x=>x.server===server&&x.id===id&&Number(x.quality)===quality&&x.from===lastRoute.from.city&&x.to===lastRoute.to.city);
+  const existing=list.find(x=>x.server===server&&x.id===id&&Number(x.quality)===quality);
   if(existing){
     existing.quantity=Math.max(1,Number(existing.quantity)||1)+quantity;
     existing.prices=lastPrices;
@@ -605,27 +571,12 @@ function addCurrentToTransport(){
     list.unshift({
       uid:`${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`,
       server,id,name:selected.name,quality,quantity,
-      from:lastRoute.from.city,to:lastRoute.to.city,
       prices:lastPrices,updatedAt:Date.now()
     });
   }
-  saveTransportItems(list);
+  saveActiveTransportItems(list);
   renderTransportPlanner();
-  $("transportStatus").textContent=`${selected.name} agregado a la carga.`;
-}
-function optimizeTransport(){
-  const list=getTransportItems();
-  let profitable=0;
-  for(const item of list){
-    const route=bestRoute(item.prices,currentFee());
-    if(!route) continue;
-    item.from=route.from.city;
-    item.to=route.to.city;
-    if(route.net>0) profitable++;
-  }
-  saveTransportItems(list);
-  renderTransportPlanner();
-  $("transportStatus").textContent=profitable?`${profitable} objeto${profitable===1?"":"s"} con ruta rentable después de optimizar.`:"No se encontró una ruta rentable con los precios guardados.";
+  $("transportStatus").textContent=`${selected.name} añadido al cofre.`;
 }
 function chunked(list,size){
   const chunks=[];
@@ -633,7 +584,7 @@ function chunked(list,size){
   return chunks;
 }
 async function refreshTransportPrices(){
-  const list=getTransportItems();
+  const list=getActiveTransportItems();
   if(!list.length) return;
   const btn=$("refreshTransportBtn");
   btn.disabled=true;
@@ -668,7 +619,7 @@ async function refreshTransportPrices(){
         completed++;
       }
     }
-    saveTransportItems(list);
+    saveActiveTransportItems(list);
     renderTransportPlanner();
     $("transportStatus").textContent=failed?`Precios actualizados con ${failed} lote${failed===1?"":"s"} que no respondió.`:`Precios de toda la carga actualizados.`;
   }finally{
@@ -816,58 +767,54 @@ $("enchantment").addEventListener("change",()=>{
     resetPriceView();
   }
 });
-$("server").addEventListener("change",()=>{ saveSettings(); if(selected) resetPriceView(); });
+$("server").addEventListener("change",()=>{ saveSettings(); if(selected) resetPriceView(); renderTransportPlanner(); });
 $("sort").addEventListener("change",()=>{ saveSettings(); if(lastPrices.length) renderPrices(lastPrices.map(x=>({
   city:x.city,sell_price_min:x.sell,buy_price_max:x.buy,sell_price_min_date:x.sellDate,buy_price_max_date:x.buyDate
-})),false); });
-$("quantity").addEventListener("input",updateRouteProfit);
-$("marketFee").addEventListener("input",()=>{
-  $("plannerFee").value=$("marketFee").value;
-  updateRouteProfit();
-  renderTransportPlanner();
-});
+}))); });
+$("quantity").addEventListener("input",updateChestAddPreview);
 $("plannerFee").addEventListener("input",()=>{
-  $("marketFee").value=$("plannerFee").value;
-  updateRouteProfit();
+  saveSettings();
   renderTransportPlanner();
 });
-$("routeFrom").addEventListener("change",updateRouteProfit);
-$("routeTo").addEventListener("change",updateRouteProfit);
+$("transportOrigin").addEventListener("change",()=>{
+  const config=getTransportConfig(getActiveTransportItems());
+  config.origin=$("transportOrigin").value;
+  saveTransportConfig(config);
+  renderTransportPlanner();
+  $("transportStatus").textContent=`Cofre ubicado en ${config.origin}.`;
+});
+$("transportSaleMode").addEventListener("change",()=>{
+  const config=getTransportConfig(getActiveTransportItems());
+  config.saleMode=$("transportSaleMode").value;
+  saveTransportConfig(config);
+  renderTransportPlanner();
+  $("transportStatus").textContent=config.saleMode==="listing"?"Comparando órdenes de venta publicadas.":"Comparando ventas instantáneas.";
+});
 $("searchPrices").addEventListener("click",fetchPrices);
 $("refreshBtn").addEventListener("click",fetchPrices);
 $("historyBtn").addEventListener("click",fetchHistory);
 $("favoriteBtn").addEventListener("click",toggleFavorite);
 $("addToTransport").addEventListener("click",addCurrentToTransport);
-$("optimizeTransportBtn").addEventListener("click",optimizeTransport);
 $("refreshTransportBtn").addEventListener("click",refreshTransportPrices);
 $("clearTransportBtn").addEventListener("click",()=>{
-  if(!confirm("¿Vaciar todo el plan de transporte?")) return;
-  localStorage.removeItem(STORE.transport);
+  if(!confirm("¿Vaciar todos los objetos del cofre?")) return;
+  saveActiveTransportItems([]);
   renderTransportPlanner();
 });
 $("transportItems").addEventListener("change",e=>{
   const card=e.target.closest("[data-transport-id]");
   const field=e.target.dataset.field;
   if(!card||!field) return;
-  const list=getTransportItems();
+  const list=getActiveTransportItems();
   const item=list.find(x=>x.uid===card.dataset.transportId);
   if(!item) return;
   if(field==="quantity"){
     clearTimeout(transportInputTimer);
     item.quantity=Math.max(1,Math.floor(Number(e.target.value)||1));
   }
-  if(field==="from"||field==="to"){
-    const other=field==="from"?"to":"from";
-    if(e.target.value===item[other]){
-      $("transportStatus").textContent="El origen y el destino deben ser ciudades diferentes.";
-      renderTransportPlanner();
-      return;
-    }
-    item[field]=e.target.value;
-  }
-  saveTransportItems(list);
+  saveActiveTransportItems(list);
   renderTransportPlanner();
-  $("transportStatus").textContent="Plan actualizado.";
+  $("transportStatus").textContent="Cofre actualizado.";
 });
 $("transportItems").addEventListener("input",e=>{
   if(e.target.dataset.field!=="quantity") return;
@@ -876,11 +823,11 @@ $("transportItems").addEventListener("input",e=>{
   const value=e.target.value;
   clearTimeout(transportInputTimer);
   transportInputTimer=setTimeout(()=>{
-    const list=getTransportItems();
+    const list=getActiveTransportItems();
     const item=list.find(x=>x.uid===card.dataset.transportId);
     if(!item) return;
     item.quantity=Math.max(1,Math.floor(Number(value)||1));
-    saveTransportItems(list);
+    saveActiveTransportItems(list);
     renderTransportPlanner();
     $("transportStatus").textContent="Cantidad actualizada.";
   },250);
@@ -889,10 +836,10 @@ $("transportItems").addEventListener("click",e=>{
   const remove=e.target.closest('[data-action="remove"]');
   if(!remove) return;
   const card=remove.closest("[data-transport-id]");
-  const list=getTransportItems().filter(x=>x.uid!==card.dataset.transportId);
-  saveTransportItems(list);
+  const list=getActiveTransportItems().filter(x=>x.uid!==card.dataset.transportId);
+  saveActiveTransportItems(list);
   renderTransportPlanner();
-  if(list.length) $("transportStatus").textContent="Objeto quitado de la carga.";
+  if(list.length) $("transportStatus").textContent="Objeto quitado del cofre.";
 });
 $("clearFavorites").addEventListener("click",()=>{localStorage.removeItem(STORE.favorites);renderQuickLists();refreshFavoriteButton();});
 $("clearRecent").addEventListener("click",()=>{localStorage.removeItem(STORE.recent);renderQuickLists();});

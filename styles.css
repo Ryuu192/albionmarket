@@ -144,12 +144,9 @@ input:focus,select:focus{border-color:var(--gold)}
 }
 .badge.good{color:var(--green);border-color:rgba(127,209,154,.35)}
 .badge.bad{color:var(--red);border-color:rgba(232,137,137,.35)}
-.route-main{
-  margin-top:12px;padding:12px;border-radius:13px;
-  background:#100d0a;border:1px solid var(--line);font-weight:750;line-height:1.45
-}
-.route-controls{margin-top:13px}
-.transport-add{margin-top:10px}
+.chest-add-grid{display:grid;grid-template-columns:minmax(110px,.55fr) 1.45fr;align-items:end;gap:10px;margin-top:13px}
+.chest-add-grid .field{margin-bottom:0}
+.transport-add{min-height:45px}
 .fake-input{display:flex;align-items:center}
 .profit{font-weight:900;color:var(--green)}
 .profit.negative{color:var(--red)}
@@ -165,9 +162,8 @@ input:focus,select:focus{border-color:var(--gold)}
 .transport-recommendation strong,.transport-recommendation small{display:block}
 .transport-recommendation strong{font-size:1rem}
 .transport-recommendation small{color:var(--muted);margin-top:4px}
-.planner-settings{display:flex;align-items:end;gap:10px;margin-top:13px}
-.planner-fee{flex:1;margin-bottom:0}
-.planner-settings>.ghost{min-height:45px}
+.planner-settings{display:grid;grid-template-columns:repeat(3,1fr);align-items:end;gap:10px;margin-top:13px}
+.planner-settings .field{margin-bottom:0}
 .transport-summary{
   display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:11px
 }
@@ -181,6 +177,7 @@ input:focus,select:focus{border-color:var(--gold)}
   background:#100d0a;border:1px solid var(--line);border-radius:14px;padding:12px
 }
 .transport-route-card.recommended{border-color:rgba(127,209,154,.55);box-shadow:inset 3px 0 0 var(--green)}
+.transport-route-card.origin{box-shadow:inset 3px 0 0 var(--gold)}
 .transport-route-head,.transport-item-head{
   display:flex;align-items:center;justify-content:space-between;gap:9px
 }
@@ -206,6 +203,7 @@ input:focus,select:focus{border-color:var(--gold)}
 .transport-item-grid{
   display:grid;grid-template-columns:.65fr 1fr 1fr;gap:8px;margin-top:11px
 }
+.transport-item-grid.chest-item-grid{grid-template-columns:minmax(110px,180px)}
 .transport-item-grid .field{margin-bottom:0}
 .transport-item-grid input,.transport-item-grid select{min-height:41px;padding:9px}
 .transport-empty{color:var(--muted);font-size:.78rem;text-align:center;padding:12px}
@@ -249,8 +247,8 @@ footer{text-align:center;color:#73695b;font-size:.68rem;padding:20px 16px 8px}
 @media(max-width:560px){
   .grid3{grid-template-columns:1fr 1fr}
   .grid3>.field:last-child{grid-column:1/-1}
-  .planner-settings{align-items:stretch;flex-direction:column}
-  .planner-settings>.ghost{width:100%}
+  .planner-settings{grid-template-columns:1fr}
+  .chest-add-grid{grid-template-columns:1fr}
 }
 @media(max-width:440px){
   .grid2,.summary{grid-template-columns:1fr}

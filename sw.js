@@ -1,4 +1,4 @@
-const CACHE="albion-market-pocket-v2-1-search-v1";
+const CACHE="albion-market-pocket-v2-2-chest-v3";
 const ASSETS=[
   "./",
   "./index.html",
@@ -31,12 +31,12 @@ self.addEventListener("fetch",event=>{
   }
 
   event.respondWith(
-    caches.match(event.request).then(cached=>cached||fetch(event.request).then(response=>{
+    fetch(event.request).then(response=>{
       if(response.ok){
         const copy=response.clone();
         caches.open(CACHE).then(cache=>cache.put(event.request,copy));
       }
       return response;
-    }))
+    }).catch(()=>caches.match(event.request))
   );
 });
