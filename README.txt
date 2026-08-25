@@ -1,4 +1,4 @@
-ALBION MARKET POCKET — V2
+ALBION MARKET POCKET — V2.1
 
 NOVEDADES
 ---------
@@ -6,6 +6,8 @@ NOVEDADES
 - Búsquedas recientes.
 - Preferencias persistentes de servidor, calidad y encantamiento.
 - Mejor ruta de arbitraje instantáneo entre ciudades.
+- Plan de transporte con varios objetos, cantidades, orígenes y destinos.
+- Rutas agrupadas, recomendación de la más rentable y actualización por lotes.
 - Calculadora de cantidad + comisión/impuesto editable.
 - Ordenar ciudades por compra, venta o frescura.
 - Historial de ventas por ciudad (7, 14 o 30 días).

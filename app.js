@@ -7,10 +7,13 @@ const API_HOSTS = {
 };
 const ITEMS_URL = "https://raw.githubusercontent.com/ao-data/ao-bin-dumps/master/formatted/items.json";
 const CITIES = ["Caerleon","Bridgewatch","Fort Sterling","Lymhurst","Martlock","Thetford","Brecilien","Black Market"];
+const SERVER_NAMES = {west:"Américas",europe:"Europa",east:"Asia"};
+const QUALITY_NAMES = {1:"Normal",2:"Buena",3:"Sobresaliente",4:"Excelente",5:"Obra maestra"};
 const STORE = {
   settings: "amp-settings-v2",
   favorites: "amp-favorites-v2",
-  recent: "amp-recent-v2"
+  recent: "amp-recent-v2",
+  transport: "amp-transport-v1"
 };
 
 let items = [];
@@ -19,6 +22,7 @@ let lastPrices = [];
 let lastRoute = null;
 let installPrompt = null;
 let debounceTimer = null;
+let transportInputTimer = null;
 let fetchSeq = 0;
 
 const safeJSON = (s, fallback) => { try { return JSON.parse(s) ?? fallback; } catch { return fallback; } };
@@ -84,6 +88,7 @@ function loadSettings(){
   for(const id of ["server","sort","enchantment","quality","quantity","marketFee"]){
     if(s[id] != null && $(id)) $(id).value = s[id];
   }
+  $("plannerFee").value = $("marketFee").value;
 }
 
 async function loadItems(){
@@ -218,18 +223,31 @@ function renderQuickLists(){
   });
 }
 
+function resetPriceView(){
+  fetchSeq++;
+  lastPrices = [];
+  lastRoute = null;
+  for(const id of ["summary","routeSection","resultsSection","historySection"]){
+    $(id).classList.add("hidden");
+  }
+  $("routeFrom").innerHTML = "";
+  $("routeTo").innerHTML = "";
+  $("addToTransport").disabled = true;
+  $("historyStats").classList.add("hidden");
+  $("chartEmpty").classList.remove("hidden");
+  clearChart();
+  $("searchPrices").disabled = !selected;
+}
+
 function selectItem(item){
   selected = {id:baseId(item.id),name:item.name};
+  resetPriceView();
   $("search").value = item.name;
   $("itemName").textContent = item.name;
   $("itemId").textContent = currentItemId();
   $("itemImg").src = imageUrl(currentItemId(),Number($("quality").value),128);
   $("selectedItem").classList.remove("hidden");
   $("searchPrices").disabled = false;
-  $("historySection").classList.add("hidden");
-  $("historyStats").classList.add("hidden");
-  $("chartEmpty").classList.remove("hidden");
-  clearChart();
   refreshFavoriteButton();
   showError("");
 }
@@ -292,34 +310,73 @@ function sortPrices(arr){
   });
   return copy;
 }
-function bestRoute(arr){
+function currentFee(){
+  return Math.min(100,Math.max(0,Number($("marketFee").value)||0));
+}
+function routeForCities(arr,fromCity,toCity,feePct=currentFee()){
+  const from=arr.find(x=>x.city===fromCity);
+  const to=arr.find(x=>x.city===toCity);
+  if(!from?.sell || !to?.buy || from.city===to.city) return null;
+  const revenue=to.buy*(1-feePct/100);
+  const net=revenue-from.sell;
+  const margin=net/from.sell*100;
+  return {from,to,gross:to.buy-from.sell,net,margin};
+}
+function bestRoute(arr,feePct=currentFee()){
   let best = null;
   for(const from of arr){
     if(!from.sell) continue;
     for(const to of arr){
       if(from.city===to.city || !to.buy) continue;
-      const gross = to.buy-from.sell;
-      const margin = gross/from.sell*100;
-      if(!best || margin>best.margin) best={from,to,gross,margin};
+      const route=routeForCities(arr,from.city,to.city,feePct);
+      if(!route) continue;
+      if(!best || route.net>best.net || (route.net===best.net && route.margin>best.margin)) best=route;
     }
   }
   return best;
 }
+function routeOptions(type,selectedCity){
+  return lastPrices.map(x=>{
+    const value=type==="from"?x.sell:x.buy;
+    const label=value?`${x.city} · ${money(value)} 🪙`:`${x.city} · sin datos`;
+    return `<option value="${esc(x.city)}" ${x.city===selectedCity?"selected":""} ${value?"":"disabled"}>${esc(label)}</option>`;
+  }).join("");
+}
+function populateRouteControls(route){
+  $("routeFrom").innerHTML=routeOptions("from",route?.from.city);
+  $("routeTo").innerHTML=routeOptions("to",route?.to.city);
+  if(route){
+    $("routeFrom").value=route.from.city;
+    $("routeTo").value=route.to.city;
+  }
+}
 function updateRouteProfit(){
-  if(!lastRoute) return;
-  const qty = Math.max(1,Number($("quantity").value)||1);
-  const fee = Math.max(0,Number($("marketFee").value)||0)/100;
-  const revenue = lastRoute.to.buy*(1-fee);
-  const profitEach = revenue-lastRoute.from.sell;
+  lastRoute=routeForCities(lastPrices,$("routeFrom").value,$("routeTo").value);
+  if(!lastRoute){
+    $("routeText").textContent="Elige dos ciudades diferentes con precios disponibles.";
+    $("routeProfit").textContent="—";
+    $("routeProfit").classList.remove("negative");
+    $("routeBadge").textContent="Sin datos";
+    $("routeBadge").className="badge";
+    $("addToTransport").disabled=true;
+    saveSettings();
+    return;
+  }
+  const qty = Math.max(1,Math.floor(Number($("quantity").value)||1));
+  const profitEach = lastRoute.net;
   const total = profitEach*qty;
+  $("routeText").innerHTML = `<strong>${esc(lastRoute.from.city)}</strong> → <strong>${esc(lastRoute.to.city)}</strong><br>
+    Comprar a ${money(lastRoute.from.sell)} 🪙 · vender instantáneo a ${money(lastRoute.to.buy)} 🪙`;
   $("routeProfit").textContent = `${total>=0?"+":""}${money(total)} 🪙`;
   $("routeProfit").classList.toggle("negative",total<0);
-  const netMargin = lastRoute.from.sell ? profitEach/lastRoute.from.sell*100 : 0;
-  $("routeBadge").textContent = `Neto ${netMargin>=0?"+":""}${pct(netMargin)}`;
-  $("routeBadge").className = `badge ${netMargin>=0?"good":"bad"}`;
+  $("routeBadge").textContent = `Neto ${lastRoute.margin>=0?"+":""}${pct(lastRoute.margin)}`;
+  $("routeBadge").className = `badge ${lastRoute.margin>=0?"good":"bad"}`;
+  $("addToTransport").disabled=false;
   saveSettings();
 }
-function renderPrices(data){
+function renderPrices(data,resetRoute=true){
+  const previousFrom=resetRoute?"":$("routeFrom").value;
+  const previousTo=resetRoute?"":$("routeTo").value;
   lastPrices = normalizePrices(data);
   const buys = lastPrices.filter(x=>x.sell>0).sort((a,b)=>a.sell-b.sell);
   const sells = lastPrices.filter(x=>x.buy>0).sort((a,b)=>b.buy-a.buy);
@@ -332,10 +389,9 @@ function renderPrices(data){
   $("bestSellCity").textContent = bestSell?.city || "—";
   $("summary").classList.remove("hidden");
 
-  lastRoute = bestRoute(lastPrices);
+  lastRoute = routeForCities(lastPrices,previousFrom,previousTo) || bestRoute(lastPrices);
   if(lastRoute){
-    $("routeText").innerHTML = `<strong>${esc(lastRoute.from.city)}</strong> → <strong>${esc(lastRoute.to.city)}</strong><br>
-      Comprar a ${money(lastRoute.from.sell)} 🪙 · vender instantáneo a ${money(lastRoute.to.buy)} 🪙`;
+    populateRouteControls(lastRoute);
     $("routeSection").classList.remove("hidden");
     updateRouteProfit();
   }else{
@@ -375,6 +431,234 @@ function renderPrices(data){
   $("historyCity").innerHTML = CITIES.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
   $("historyCity").value = bestBuy?.city || "Caerleon";
   $("historySection").classList.remove("hidden");
+}
+
+function getTransportItems(){
+  const stored=getStore(STORE.transport,[]);
+  return Array.isArray(stored)?stored.filter(x=>x&&x.uid&&x.id&&Array.isArray(x.prices)):[];
+}
+function saveTransportItems(list){
+  setStore(STORE.transport,list.slice(0,80));
+}
+function transportCalculation(item){
+  const quantity=Math.max(1,Math.floor(Number(item.quantity)||1));
+  const route=routeForCities(item.prices,item.from,item.to,currentFee());
+  if(!route) return {item,quantity,route:null,investment:0,revenue:0,profit:0,margin:0};
+  const investment=route.from.sell*quantity;
+  const revenue=route.to.buy*(1-currentFee()/100)*quantity;
+  const profit=revenue-investment;
+  const margin=investment?profit/investment*100:0;
+  return {item,quantity,route,investment,revenue,profit,margin};
+}
+function aggregateTransport(list){
+  const calculations=list.map(transportCalculation);
+  const groups=new Map();
+  for(const calc of calculations){
+    if(!calc.route) continue;
+    const key=`${calc.route.from.city}|${calc.route.to.city}`;
+    if(!groups.has(key)) groups.set(key,{
+      key,from:calc.route.from.city,to:calc.route.to.city,items:0,units:0,
+      investment:0,revenue:0,profit:0,worstHours:0
+    });
+    const group=groups.get(key);
+    group.items++;
+    group.units+=calc.quantity;
+    group.investment+=calc.investment;
+    group.revenue+=calc.revenue;
+    group.profit+=calc.profit;
+    group.worstHours=Math.max(
+      group.worstHours,
+      ageInfo(calc.route.from.sellDate).hours,
+      ageInfo(calc.route.to.buyDate).hours
+    );
+  }
+  const routes=[...groups.values()].map(group=>({
+    ...group,margin:group.investment?group.profit/group.investment*100:0
+  })).sort((a,b)=>b.profit-a.profit);
+  return {calculations,routes};
+}
+function transportCityOptions(item,type,selectedCity){
+  return CITIES.map(city=>{
+    const row=item.prices.find(x=>x.city===city);
+    const value=type==="from"?Number(row?.sell||0):Number(row?.buy||0);
+    const label=value?`${city} · ${money(value)} 🪙`:`${city} · sin datos`;
+    return `<option value="${esc(city)}" ${city===selectedCity?"selected":""} ${value?"":"disabled"}>${esc(label)}</option>`;
+  }).join("");
+}
+function renderTransportPlanner(){
+  const list=getTransportItems();
+  const section=$("transportPlanner");
+  section.classList.toggle("hidden",!list.length);
+  $("plannerFee").value=$("marketFee").value;
+  if(!list.length){
+    $("transportSummary").innerHTML="";
+    $("transportRoutes").innerHTML="";
+    $("transportItems").innerHTML="";
+    return;
+  }
+
+  const {calculations,routes}=aggregateTransport(list);
+  const valid=calculations.filter(x=>x.route);
+  const totalUnits=calculations.reduce((sum,x)=>sum+x.quantity,0);
+  const investment=valid.reduce((sum,x)=>sum+x.investment,0);
+  const profit=valid.reduce((sum,x)=>sum+x.profit,0);
+  const best=routes.find(x=>x.profit>0);
+  const closest=routes[0];
+
+  if(best){
+    $("transportRecommendation").className="transport-recommendation good";
+    $("transportRecommendation").innerHTML=`<strong>Conviene más: ${esc(best.from)} → ${esc(best.to)}</strong>
+      <small>Ganancia neta ${best.profit>=0?"+":""}${money(best.profit)} 🪙 · ROI ${best.margin>=0?"+":""}${pct(best.margin)} · ${best.items} objeto${best.items===1?"":"s"}</small>`;
+  }else if(closest){
+    $("transportRecommendation").className="transport-recommendation bad";
+    $("transportRecommendation").innerHTML=`<strong>No hay una ruta rentable con la carga actual</strong>
+      <small>El resultado menos desfavorable es ${esc(closest.from)} → ${esc(closest.to)}: ${money(closest.profit)} 🪙.</small>`;
+  }else{
+    $("transportRecommendation").className="transport-recommendation bad";
+    $("transportRecommendation").innerHTML=`<strong>Faltan precios para calcular las rutas</strong><small>Actualiza la carga o elige ciudades con datos disponibles.</small>`;
+  }
+
+  $("transportSummary").innerHTML=`
+    <div class="stat"><span>Objetos / unidades</span><strong>${list.length} / ${money(totalUnits)}</strong></div>
+    <div class="stat"><span>Inversión total</span><strong>${money(investment)} 🪙</strong></div>
+    <div class="stat"><span>Ganancia neta</span><strong class="${profit>=0?"good":"bad"}">${profit>=0?"+":""}${money(profit)} 🪙</strong></div>`;
+
+  $("transportRoutes").innerHTML=routes.length?routes.map(route=>{
+    const age=Number.isFinite(route.worstHours)?ageInfo(new Date(Date.now()-route.worstHours*36e5).toISOString()):{label:"Sin datos",cls:"very-stale"};
+    return `<article class="transport-route-card ${best&&route.key===best.key?"recommended":""}">
+      <div class="transport-route-head">
+        <strong>${esc(route.from)} → ${esc(route.to)}</strong>
+        ${best&&route.key===best.key?`<span class="marker">recomendada</span>`:`<small>${route.items} objeto${route.items===1?"":"s"}</small>`}
+      </div>
+      <div class="transport-route-metrics">
+        <div class="transport-metric"><span>Inversión</span><strong>${money(route.investment)} 🪙</strong></div>
+        <div class="transport-metric"><span>Ganancia neta</span><strong class="${route.profit>=0?"good":"bad"}">${route.profit>=0?"+":""}${money(route.profit)} 🪙</strong><small>ROI ${route.margin>=0?"+":""}${pct(route.margin)}</small></div>
+        <div class="transport-metric"><span>Dato más viejo</span><strong class="fresh ${age.cls}">${age.label}</strong><small>${money(route.units)} unidades</small></div>
+      </div>
+    </article>`;
+  }).join(""):`<div class="transport-empty">No hay rutas calculables.</div>`;
+
+  $("transportItems").innerHTML=calculations.map(calc=>{
+    const item=calc.item;
+    const fromAge=calc.route?ageInfo(calc.route.from.sellDate):{label:"Sin datos",cls:"very-stale"};
+    const toAge=calc.route?ageInfo(calc.route.to.buyDate):{label:"Sin datos",cls:"very-stale"};
+    return `<article class="transport-item" data-transport-id="${esc(item.uid)}">
+      <div class="transport-item-head">
+        <img src="${imageUrl(item.id,Number(item.quality),96)}" alt="" loading="lazy">
+        <div class="transport-item-copy">
+          <strong>${esc(item.name)}</strong>
+          <small>${esc(item.id)} · ${esc(QUALITY_NAMES[item.quality]||`Calidad ${item.quality}`)} · ${esc(SERVER_NAMES[item.server]||item.server)}</small>
+        </div>
+        <button class="remove-item" data-action="remove" title="Quitar de la carga" aria-label="Quitar ${esc(item.name)}">×</button>
+      </div>
+      <div class="transport-item-grid">
+        <div class="field">
+          <label for="qty-${esc(item.uid)}">Cantidad</label>
+          <input id="qty-${esc(item.uid)}" data-field="quantity" type="number" min="1" step="1" inputmode="numeric" value="${calc.quantity}">
+        </div>
+        <div class="field">
+          <label for="from-${esc(item.uid)}">Comprar en</label>
+          <select id="from-${esc(item.uid)}" data-field="from">${transportCityOptions(item,"from",item.from)}</select>
+        </div>
+        <div class="field">
+          <label for="to-${esc(item.uid)}">Vender en</label>
+          <select id="to-${esc(item.uid)}" data-field="to">${transportCityOptions(item,"to",item.to)}</select>
+        </div>
+      </div>
+      <div class="transport-item-metrics">
+        <div class="transport-metric"><span>Compra/unidad</span><strong>${calc.route?money(calc.route.from.sell)+" 🪙":"—"}</strong><small class="fresh ${fromAge.cls}">${fromAge.label}</small></div>
+        <div class="transport-metric"><span>Venta/unidad</span><strong>${calc.route?money(calc.route.to.buy)+" 🪙":"—"}</strong><small class="fresh ${toAge.cls}">${toAge.label}</small></div>
+        <div class="transport-metric"><span>Ganancia neta</span><strong class="${calc.profit>=0?"good":"bad"}">${calc.route?(calc.profit>=0?"+":"")+money(calc.profit)+" 🪙":"—"}</strong><small>${calc.route?`ROI ${calc.margin>=0?"+":""}${pct(calc.margin)}`:"Ruta no válida"}</small></div>
+      </div>
+    </article>`;
+  }).join("");
+}
+function addCurrentToTransport(){
+  if(!selected||!lastRoute||!lastPrices.length) return;
+  const list=getTransportItems();
+  const id=currentItemId();
+  const quality=Number($("quality").value);
+  const quantity=Math.max(1,Math.floor(Number($("quantity").value)||1));
+  const server=$("server").value;
+  const existing=list.find(x=>x.server===server&&x.id===id&&Number(x.quality)===quality&&x.from===lastRoute.from.city&&x.to===lastRoute.to.city);
+  if(existing){
+    existing.quantity=Math.max(1,Number(existing.quantity)||1)+quantity;
+    existing.prices=lastPrices;
+    existing.updatedAt=Date.now();
+  }else{
+    list.unshift({
+      uid:`${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`,
+      server,id,name:selected.name,quality,quantity,
+      from:lastRoute.from.city,to:lastRoute.to.city,
+      prices:lastPrices,updatedAt:Date.now()
+    });
+  }
+  saveTransportItems(list);
+  renderTransportPlanner();
+  $("transportStatus").textContent=`${selected.name} agregado a la carga.`;
+}
+function optimizeTransport(){
+  const list=getTransportItems();
+  let profitable=0;
+  for(const item of list){
+    const route=bestRoute(item.prices,currentFee());
+    if(!route) continue;
+    item.from=route.from.city;
+    item.to=route.to.city;
+    if(route.net>0) profitable++;
+  }
+  saveTransportItems(list);
+  renderTransportPlanner();
+  $("transportStatus").textContent=profitable?`${profitable} objeto${profitable===1?"":"s"} con ruta rentable después de optimizar.`:"No se encontró una ruta rentable con los precios guardados.";
+}
+function chunked(list,size){
+  const chunks=[];
+  for(let i=0;i<list.length;i+=size) chunks.push(list.slice(i,i+size));
+  return chunks;
+}
+async function refreshTransportPrices(){
+  const list=getTransportItems();
+  if(!list.length) return;
+  const btn=$("refreshTransportBtn");
+  btn.disabled=true;
+  btn.textContent="Actualizando…";
+  const groups=new Map();
+  for(const item of list){
+    const key=`${item.server}|${item.quality}`;
+    if(!groups.has(key)) groups.set(key,[]);
+    groups.get(key).push(item);
+  }
+  const totalBatches=[...groups.values()].reduce((sum,group)=>sum+Math.ceil(new Set(group.map(x=>x.id)).size/20),0);
+  let completed=0,failed=0;
+  try{
+    for(const group of groups.values()){
+      const server=group[0].server;
+      const quality=Number(group[0].quality);
+      const ids=[...new Set(group.map(x=>x.id))];
+      for(const idChunk of chunked(ids,20)){
+        $("transportStatus").textContent=`Actualizando lote ${completed+1} de ${totalBatches}…`;
+        try{
+          const path=idChunk.map(encodeURIComponent).join(",");
+          const url=`${API_HOSTS[server]}/api/v2/stats/prices/${path}.json?locations=${encodeURIComponent(CITIES.join(","))}&qualities=${quality}`;
+          const res=await fetch(url,{cache:"no-store"});
+          if(!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data=await res.json();
+          for(const item of group.filter(x=>idChunk.includes(x.id))){
+            const rows=data.filter(row=>String(row.item_id||"").toUpperCase()===item.id.toUpperCase()&&Number(row.quality)===quality);
+            item.prices=normalizePrices(rows);
+            item.updatedAt=Date.now();
+          }
+        }catch(_){ failed++; }
+        completed++;
+      }
+    }
+    saveTransportItems(list);
+    renderTransportPlanner();
+    $("transportStatus").textContent=failed?`Precios actualizados con ${failed} lote${failed===1?"":"s"} que no respondió.`:`Precios de toda la carga actualizados.`;
+  }finally{
+    btn.disabled=false;
+    btn.textContent="Actualizar precios";
+  }
 }
 
 function dateISO(d){
@@ -493,6 +777,7 @@ function drawChart(series){
 
 $("search").addEventListener("input",e=>{
   selected=null;
+  resetPriceView();
   $("selectedItem").classList.add("hidden");
   $("searchPrices").disabled=true;
   clearTimeout(debounceTimer);
@@ -503,6 +788,7 @@ $("quality").addEventListener("change",()=>{
   if(selected){
     $("itemImg").src=imageUrl(currentItemId(),Number($("quality").value),128);
     refreshFavoriteButton();
+    resetPriceView();
   }
 });
 $("enchantment").addEventListener("change",()=>{
@@ -511,18 +797,87 @@ $("enchantment").addEventListener("change",()=>{
     $("itemId").textContent=currentItemId();
     $("itemImg").src=imageUrl(currentItemId(),Number($("quality").value),128);
     refreshFavoriteButton();
+    resetPriceView();
   }
 });
-$("server").addEventListener("change",saveSettings);
+$("server").addEventListener("change",()=>{ saveSettings(); if(selected) resetPriceView(); });
 $("sort").addEventListener("change",()=>{ saveSettings(); if(lastPrices.length) renderPrices(lastPrices.map(x=>({
   city:x.city,sell_price_min:x.sell,buy_price_max:x.buy,sell_price_min_date:x.sellDate,buy_price_max_date:x.buyDate
-}))); });
+})),false); });
 $("quantity").addEventListener("input",updateRouteProfit);
-$("marketFee").addEventListener("input",updateRouteProfit);
+$("marketFee").addEventListener("input",()=>{
+  $("plannerFee").value=$("marketFee").value;
+  updateRouteProfit();
+  renderTransportPlanner();
+});
+$("plannerFee").addEventListener("input",()=>{
+  $("marketFee").value=$("plannerFee").value;
+  updateRouteProfit();
+  renderTransportPlanner();
+});
+$("routeFrom").addEventListener("change",updateRouteProfit);
+$("routeTo").addEventListener("change",updateRouteProfit);
 $("searchPrices").addEventListener("click",fetchPrices);
 $("refreshBtn").addEventListener("click",fetchPrices);
 $("historyBtn").addEventListener("click",fetchHistory);
 $("favoriteBtn").addEventListener("click",toggleFavorite);
+$("addToTransport").addEventListener("click",addCurrentToTransport);
+$("optimizeTransportBtn").addEventListener("click",optimizeTransport);
+$("refreshTransportBtn").addEventListener("click",refreshTransportPrices);
+$("clearTransportBtn").addEventListener("click",()=>{
+  if(!confirm("¿Vaciar todo el plan de transporte?")) return;
+  localStorage.removeItem(STORE.transport);
+  renderTransportPlanner();
+});
+$("transportItems").addEventListener("change",e=>{
+  const card=e.target.closest("[data-transport-id]");
+  const field=e.target.dataset.field;
+  if(!card||!field) return;
+  const list=getTransportItems();
+  const item=list.find(x=>x.uid===card.dataset.transportId);
+  if(!item) return;
+  if(field==="quantity"){
+    clearTimeout(transportInputTimer);
+    item.quantity=Math.max(1,Math.floor(Number(e.target.value)||1));
+  }
+  if(field==="from"||field==="to"){
+    const other=field==="from"?"to":"from";
+    if(e.target.value===item[other]){
+      $("transportStatus").textContent="El origen y el destino deben ser ciudades diferentes.";
+      renderTransportPlanner();
+      return;
+    }
+    item[field]=e.target.value;
+  }
+  saveTransportItems(list);
+  renderTransportPlanner();
+  $("transportStatus").textContent="Plan actualizado.";
+});
+$("transportItems").addEventListener("input",e=>{
+  if(e.target.dataset.field!=="quantity") return;
+  const card=e.target.closest("[data-transport-id]");
+  if(!card) return;
+  const value=e.target.value;
+  clearTimeout(transportInputTimer);
+  transportInputTimer=setTimeout(()=>{
+    const list=getTransportItems();
+    const item=list.find(x=>x.uid===card.dataset.transportId);
+    if(!item) return;
+    item.quantity=Math.max(1,Math.floor(Number(value)||1));
+    saveTransportItems(list);
+    renderTransportPlanner();
+    $("transportStatus").textContent="Cantidad actualizada.";
+  },250);
+});
+$("transportItems").addEventListener("click",e=>{
+  const remove=e.target.closest('[data-action="remove"]');
+  if(!remove) return;
+  const card=remove.closest("[data-transport-id]");
+  const list=getTransportItems().filter(x=>x.uid!==card.dataset.transportId);
+  saveTransportItems(list);
+  renderTransportPlanner();
+  if(list.length) $("transportStatus").textContent="Objeto quitado de la carga.";
+});
 $("clearFavorites").addEventListener("click",()=>{localStorage.removeItem(STORE.favorites);renderQuickLists();refreshFavoriteButton();});
 $("clearRecent").addEventListener("click",()=>{localStorage.removeItem(STORE.recent);renderQuickLists();});
 
@@ -557,4 +912,5 @@ if("serviceWorker" in navigator){
 
 loadSettings();
 renderQuickLists();
+renderTransportPlanner();
 loadItems();
