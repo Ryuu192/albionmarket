@@ -7,17 +7,17 @@
   <meta name="description" content="Mercado móvil de Albion Online: precios, Mi cofre por captura, transporte e historial." />
   <meta name="apple-mobile-web-app-title" content="Albion Market" />
   <title>Albion Market Pocket</title>
-  <link rel="manifest" href="manifest.webmanifest?v=2.5.1" />
+  <link rel="manifest" href="manifest.webmanifest?v=2.6.0" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=2.5.1" />
+  <link rel="stylesheet" href="styles.css?v=2.6.0" />
 </head>
 <body>
   <header class="app-header">
     <div class="topbar">
       <div>
         <p class="eyebrow">ALBION ONLINE</p>
-        <h1>Market Pocket <span class="version">v2.5.1</span></h1>
+        <h1>Market Pocket <span class="version">v2.6.0</span></h1>
       </div>
       <div class="top-actions">
         <button id="shareBtn" class="icon-btn" title="Compartir">↗</button>
@@ -164,12 +164,12 @@
 
       <div class="capture-steps" aria-label="Pasos para importar el cofre">
         <span><b>1</b> Sube la captura</span>
-        <span><b>2</b> Toca cada objeto</span>
-        <span><b>3</b> Confirma y añade</span>
+        <span><b>2</b> Detecta y revisa</span>
+        <span><b>3</b> Corrige y añade</span>
       </div>
 
       <div class="capture-intro">
-        <p>Abre tu cofre en Albion y toma una captura completa. Puedes elegir el archivo o copiar la imagen y pegarla directamente. La captura se procesa en este dispositivo.</p>
+        <p>Abre tu cofre en Albion y toma una captura completa. La app detectará las casillas ocupadas y propondrá el nombre de cada objeto. Podrás corregir cualquier resultado antes de importarlo.</p>
         <div class="capture-source-options">
           <label for="chestCaptureInput" class="primary capture-picker">Elegir captura</label>
           <span class="capture-source-or">o</span>
@@ -186,16 +186,19 @@
         <div class="capture-toolbar">
           <div class="field capture-size-field">
             <label for="captureSlotSize">Tamaño aproximado de cada casilla: <strong id="captureSlotSizeLabel">72 px</strong></label>
-            <input id="captureSlotSize" type="range" min="44" max="180" step="2" value="72" />
+            <input id="captureSlotSize" type="range" min="44" max="220" step="2" value="72" />
           </div>
-          <button id="clearCaptureMarksBtn" class="text-btn danger-text">Borrar marcas</button>
+          <div class="capture-toolbar-actions">
+            <button id="autoDetectCaptureBtn" class="primary">Detectar objetos</button>
+            <button id="clearCaptureMarksBtn" class="text-btn danger-text">Borrar marcas</button>
+          </div>
         </div>
 
-        <div id="captureStage" class="capture-stage" role="button" tabindex="0" aria-label="Captura del cofre. Toca el centro de cada objeto que quieras importar.">
+        <div id="captureStage" class="capture-stage" role="button" tabindex="0" aria-label="Captura del cofre con objetos detectados. Puedes tocar otra casilla para añadirla.">
           <img id="captureImage" alt="Captura del cofre de Albion" />
           <canvas id="captureOverlay" aria-hidden="true"></canvas>
         </div>
-        <p id="captureStatus" class="hint capture-status" aria-live="polite">Toca el centro de cada objeto que quieras añadir.</p>
+        <p id="captureStatus" class="hint capture-status" aria-live="polite">La detección comenzará automáticamente al cargar la captura.</p>
 
         <div class="section-title cargo-title capture-drafts-title">
           <h3>Casillas seleccionadas <span id="captureDraftCount" class="nav-count hidden">0</span></h3>
@@ -209,7 +212,7 @@
         </div>
       </div>
 
-      <p class="hint privacy-note"><strong>Privacidad:</strong> el reconocimiento de cantidades se ejecuta localmente. La primera vez puede descargar el motor OCR; la captura nunca sale de tu dispositivo. Como Albion no muestra el nombre sobre cada icono, tendrás que confirmarlo mediante la búsqueda.</p>
+      <p class="hint privacy-note"><strong>Privacidad:</strong> la cuadrícula, los objetos y las cantidades se reconocen en este dispositivo; la captura nunca se sube. Las propuestas pueden fallar: revisa el nivel de confianza y usa <em>Cambiar</em> para corregir el nombre, la calidad, el encantamiento o la cantidad.</p>
     </section>
 
     <section id="transportPlanner" class="panel view-hidden" data-screen="transport">
@@ -310,6 +313,6 @@
     Datos: Albion Online Data Project · Imágenes: Albion Render Service · OCR local: Tesseract.js
   </footer>
 
-  <script src="app.js?v=2.5.1"></script>
+  <script src="app.js?v=2.6.0"></script>
 </body>
 </html>

@@ -30,6 +30,9 @@ let captureObjectUrl = "";
 let captureOcrWorker = null;
 let captureOcrWorkerPromise = null;
 let captureOcrQueue = Promise.resolve();
+let captureVisualIndexPromise = null;
+let captureDetectionSequence = 0;
+let itemLoadPromise = null;
 
 const safeJSON = (s, fallback) => { try { return JSON.parse(s) ?? fallback; } catch { return fallback; } };
 const getStore = (key, fallback) => safeJSON(localStorage.getItem(key), fallback);
@@ -155,9 +158,10 @@ function closeChestImport(){
   $("transportPlanner").classList.remove("capture-open-hidden");
 }
 function clearCaptureDrafts(){
+  captureDetectionSequence++;
   captureDrafts=[];
   renderCaptureDrafts();
-  setCaptureStatus("Toca el centro de cada objeto que quieras añadir.");
+  setCaptureStatus("Pulsa Detectar objetos o toca una casilla para añadirla manualmente.");
 }
 function captureSlotSize(){
   return Math.max(44,Math.min(180,Number($("captureSlotSize").value)||72));
@@ -173,6 +177,7 @@ function handleCaptureFile(file){
     return;
   }
 
+  captureDetectionSequence++;
   if(captureObjectUrl) URL.revokeObjectURL(captureObjectUrl);
   captureObjectUrl=URL.createObjectURL(file);
   const img=$("captureImage");
@@ -181,7 +186,8 @@ function handleCaptureFile(file){
     $("captureWorkspace").classList.remove("hidden");
     renderCaptureDrafts();
     drawCaptureOverlay();
-    setCaptureStatus(`Captura lista (${img.naturalWidth} × ${img.naturalHeight}). Toca el centro de cada objeto.`);
+    setCaptureStatus(`Captura lista (${img.naturalWidth} × ${img.naturalHeight}). Detectando objetos…`,true);
+    setTimeout(()=>autoDetectCapture(),40);
   };
   img.onerror=()=>setCaptureStatus("No pude abrir esa captura. Prueba con PNG, JPG o WebP.");
   img.src=captureObjectUrl;
@@ -246,6 +252,491 @@ function recropCaptureDrafts(){
   }
   renderCaptureDrafts();
 }
+
+function captureIntegral(values,width,height){
+  const stride=width+1;
+  const integral=new Float64Array(stride*(height+1));
+  for(let y=0;y<height;y++){
+    let row=0;
+    const sourceOffset=y*width;
+    const targetOffset=(y+1)*stride;
+    const previousOffset=y*stride;
+    for(let x=0;x<width;x++){
+      row+=values[sourceOffset+x];
+      integral[targetOffset+x+1]=integral[previousOffset+x+1]+row;
+    }
+  }
+  return integral;
+}
+function captureIntegralRect(integral,stride,x,y,width,height){
+  const x0=Math.max(0,Math.floor(x));
+  const y0=Math.max(0,Math.floor(y));
+  const x1=Math.min(stride-1,Math.ceil(x+width));
+  const y1=Math.min(integral.length/stride-1,Math.ceil(y+height));
+  return integral[y1*stride+x1]-integral[y0*stride+x1]-integral[y1*stride+x0]+integral[y0*stride+x0];
+}
+function captureAnalysisModel(){
+  const image=$("captureImage");
+  const scale=Math.min(1,1100/Math.max(1,image.naturalWidth));
+  const width=Math.max(1,Math.round(image.naturalWidth*scale));
+  const height=Math.max(1,Math.round(image.naturalHeight*scale));
+  const canvas=document.createElement("canvas");
+  canvas.width=width;canvas.height=height;
+  const context=canvas.getContext("2d",{willReadFrequently:true});
+  context.drawImage(image,0,0,width,height);
+  const rgba=context.getImageData(0,0,width,height).data;
+  const grey=new Float32Array(width*height);
+  const greySquared=new Float32Array(width*height);
+  const saturation=new Float32Array(width*height);
+  const edge=new Float32Array(width*height);
+  for(let index=0,pixel=0;index<grey.length;index++,pixel+=4){
+    const red=rgba[pixel],green=rgba[pixel+1],blue=rgba[pixel+2];
+    const value=.299*red+.587*green+.114*blue;
+    grey[index]=value;
+    greySquared[index]=value*value;
+    saturation[index]=Math.max(red,green,blue)-Math.min(red,green,blue);
+  }
+  for(let y=1;y<height-1;y++){
+    for(let x=1;x<width-1;x++){
+      const index=y*width+x;
+      edge[index]=Math.abs(grey[index+1]-grey[index-1])+Math.abs(grey[index+width]-grey[index-width]);
+    }
+  }
+  return {
+    width,height,scale,stride:width+1,
+    grey:captureIntegral(grey,width,height),
+    greySquared:captureIntegral(greySquared,width,height),
+    saturation:captureIntegral(saturation,width,height),
+    edge:captureIntegral(edge,width,height)
+  };
+}
+function captureSlotMetrics(model,x,y,side){
+  const half=side/2;
+  const ring=Math.max(1,Math.round(side*.065));
+  const horizontalArea=Math.max(1,side*ring);
+  const verticalArea=Math.max(1,(side-ring*2)*ring);
+  const topEdge=captureIntegralRect(model.edge,model.stride,x-half,y-half,side,ring)/horizontalArea;
+  const bottomEdge=captureIntegralRect(model.edge,model.stride,x-half,y+half-ring,side,ring)/horizontalArea;
+  const leftEdge=captureIntegralRect(model.edge,model.stride,x-half,y-half+ring,ring,side-ring*2)/verticalArea;
+  const rightEdge=captureIntegralRect(model.edge,model.stride,x+half-ring,y-half+ring,ring,side-ring*2)/verticalArea;
+  const borderMinimum=Math.min(topEdge,bottomEdge,leftEdge,rightEdge);
+  const borderEdge=(topEdge+bottomEdge+leftEdge+rightEdge)*.14+borderMinimum*.44;
+  const contentSide=side*.68;
+  const contentX=x-contentSide/2;
+  const contentY=y-contentSide/2;
+  const area=contentSide*contentSide;
+  const greySum=captureIntegralRect(model.grey,model.stride,contentX,contentY,contentSide,contentSide);
+  const greySquaredSum=captureIntegralRect(model.greySquared,model.stride,contentX,contentY,contentSide,contentSide);
+  const deviation=Math.sqrt(Math.max(0,greySquaredSum/area-(greySum/area)**2));
+  const colour=captureIntegralRect(model.saturation,model.stride,contentX,contentY,contentSide,contentSide)/area;
+  const occupancy=deviation+colour*.32;
+  return {score:borderEdge*.82+Math.min(75,deviation)*.3+colour*.07,occupancy};
+}
+function detectCaptureSlots(){
+  const model=captureAnalysisModel();
+  const results=[];
+  const minNative=44;
+  const maxNative=Math.min(220,Math.max(80,$("captureImage").naturalWidth*.14));
+  const wideScreenshot=$("captureImage").naturalWidth/Math.max(1,$("captureImage").naturalHeight)>1.35;
+  const chestSearchRight=model.width*(wideScreenshot ? .48 : .98);
+  const chestSearchTopRatio=wideScreenshot ? .26 : .2;
+  for(let nativeSide=minNative;nativeSide<=maxNative;nativeSide+=4){
+    const side=nativeSide*model.scale;
+    if(side<20) continue;
+    const step=Math.max(4,Math.round(side*.18));
+    const raw=[];
+    const chestSearchTop=Math.max(side/2,model.height*chestSearchTopRatio);
+    const chestSearchBottom=Math.min(model.height-side/2,model.height*.92);
+    for(let y=chestSearchTop;y<chestSearchBottom;y+=step){
+      for(let x=side/2;x<chestSearchRight-side/2;x+=step){
+        const metrics=captureSlotMetrics(model,x,y,side);
+        if(metrics.occupancy<22) continue;
+        raw.push({x,y,score:metrics.score,occupancy:metrics.occupancy});
+      }
+    }
+    raw.sort((a,b)=>b.score-a.score);
+    const candidates=[];
+    for(const point of raw){
+      if(candidates.length>=170) break;
+      if(candidates.some(other=>Math.hypot(other.x-point.x,other.y-point.y)<side*.48)) continue;
+      let best=point;
+      for(let offsetY=-step;offsetY<=step;offsetY+=Math.max(1,Math.round(step/3))){
+        for(let offsetX=-step;offsetX<=step;offsetX+=Math.max(1,Math.round(step/3))){
+          const x=point.x+offsetX,y=point.y+offsetY;
+          if(x<side/2||y<side/2||x>model.width-side/2||y>model.height-side/2) continue;
+          const metrics=captureSlotMetrics(model,x,y,side);
+          if(metrics.score>best.score) best={x,y,score:metrics.score,occupancy:metrics.occupancy};
+        }
+      }
+      candidates.push(best);
+    }
+    let bestForSide=null;
+    for(const origin of candidates){
+      const cells=new Map();
+      for(const point of candidates){
+        const column=Math.round((point.x-origin.x)/side);
+        const row=Math.round((point.y-origin.y)/side);
+        const expectedX=origin.x+column*side;
+        const expectedY=origin.y+row*side;
+        if(Math.abs(point.x-expectedX)>side*.12||Math.abs(point.y-expectedY)>side*.12) continue;
+        const key=`${column},${row}`;
+        if(!cells.has(key)||cells.get(key).point.score<point.score){
+          cells.set(key,{column,row,point});
+        }
+      }
+      const remaining=new Set(cells.keys());
+      while(remaining.size){
+        const first=remaining.values().next().value;
+        remaining.delete(first);
+        const queue=[cells.get(first)];
+        const component=[];
+        while(queue.length){
+          const cell=queue.pop();
+          component.push(cell);
+          for(const [columnOffset,rowOffset] of [[1,0],[-1,0],[0,1],[0,-1]]){
+            const key=`${cell.column+columnOffset},${cell.row+rowOffset}`;
+            if(!remaining.has(key)) continue;
+            remaining.delete(key);
+            queue.push(cells.get(key));
+          }
+        }
+        if(component.length<4) continue;
+        const columns=component.map(cell=>cell.column);
+        const rows=component.map(cell=>cell.row);
+        const columnCount=Math.max(...columns)-Math.min(...columns)+1;
+        const rowCount=Math.max(...rows)-Math.min(...rows)+1;
+        if(columnCount<2||rowCount<2) continue;
+        const density=component.length/(columnCount*rowCount);
+        if(density<.58) continue;
+        const points=component.map(cell=>cell.point);
+        const average=points.reduce((sum,point)=>sum+point.score,0)/points.length;
+        const quality=average*Math.pow(points.length,.72)*Math.pow(nativeSide,.28)*(.55+density*.45);
+        if(!bestForSide||quality>bestForSide.quality) bestForSide={nativeSide,side,points,grid:component,quality};
+      }
+    }
+    if(bestForSide) results.push(bestForSide);
+  }
+  if(!results.length) return null;
+  results.sort((left,right)=>right.quality-left.quality);
+  const best=results[0];
+  const fitAxis=(key,coordinate)=>{
+    const values=best.grid.map(cell=>({index:cell[key],value:cell.point[coordinate]}));
+    const indexAverage=values.reduce((sum,value)=>sum+value.index,0)/values.length;
+    const valueAverage=values.reduce((sum,value)=>sum+value.value,0)/values.length;
+    const variance=values.reduce((sum,value)=>sum+(value.index-indexAverage)**2,0);
+    if(variance<.01) return null;
+    const slope=values.reduce((sum,value)=>sum+(value.index-indexAverage)*(value.value-valueAverage),0)/variance;
+    return {slope,intercept:valueAverage-slope*indexAverage};
+  };
+  const horizontalFit=fitAxis("column","x");
+  const verticalFit=fitAxis("row","y");
+  const fittedCandidates=[Math.abs(horizontalFit?.slope||0),Math.abs(verticalFit?.slope||0)].filter(value=>value>best.side*.72&&value<best.side*1.28);
+  const fittedSide=fittedCandidates.length?fittedCandidates.reduce((sum,value)=>sum+value,0)/fittedCandidates.length:best.side;
+  let originX=horizontalFit?.intercept??best.grid[0].point.x-best.grid[0].column*fittedSide;
+  let originY=verticalFit?.intercept??best.grid[0].point.y-best.grid[0].row*fittedSide;
+  const initialOriginX=originX;
+  const initialOriginY=originY;
+  let phaseScore=-Infinity;
+  const phaseStep=fittedSide*.05;
+  for(let offsetY=-fittedSide*.3;offsetY<=fittedSide*.3;offsetY+=phaseStep){
+    for(let offsetX=-fittedSide*.3;offsetX<=fittedSide*.3;offsetX+=phaseStep){
+      let score=0;
+      for(const cell of best.grid){
+        score+=captureSlotMetrics(model,initialOriginX+offsetX+cell.column*fittedSide,initialOriginY+offsetY+cell.row*fittedSide,fittedSide).score;
+      }
+      if(score>phaseScore){phaseScore=score;originX=initialOriginX+offsetX;originY=initialOriginY+offsetY;}
+    }
+  }
+  const fittedMetrics=best.grid.map(cell=>captureSlotMetrics(model,originX+cell.column*fittedSide,originY+cell.row*fittedSide,fittedSide));
+  const averageScore=fittedMetrics.reduce((sum,metrics)=>sum+metrics.score,0)/fittedMetrics.length;
+  const occupied=new Map();
+  const bestColumns=best.grid.map(cell=>cell.column);
+  const bestRows=best.grid.map(cell=>cell.row);
+  const minColumn=Math.max(Math.ceil((fittedSide/2-originX)/fittedSide),Math.min(...bestColumns));
+  const maxColumn=Math.min(Math.floor((chestSearchRight-fittedSide/2-originX)/fittedSide),Math.max(...bestColumns));
+  const minRow=Math.max(Math.ceil((model.height*chestSearchTopRatio-originY)/fittedSide),Math.min(...bestRows)-2);
+  const maxRow=Math.min(Math.floor((model.height*.92-originY)/fittedSide),Math.max(...bestRows)+3);
+  for(let row=minRow;row<=maxRow;row++){
+    for(let column=minColumn;column<=maxColumn;column++){
+      const x=originX+column*fittedSide;
+      const y=originY+row*fittedSide;
+      const metrics=captureSlotMetrics(model,x,y,fittedSide);
+      if(metrics.occupancy<22||metrics.score<averageScore*.45) continue;
+      occupied.set(`${column},${row}`,{column,row,point:{x,y,score:metrics.score,occupancy:metrics.occupancy}});
+    }
+  }
+  const remaining=new Set(occupied.keys());
+  let expandedCells=[];
+  let expandedRank=-Infinity;
+  while(remaining.size){
+    const first=remaining.values().next().value;
+    remaining.delete(first);
+    const queue=[occupied.get(first)];
+    const component=[];
+    while(queue.length){
+      const cell=queue.pop();
+      component.push(cell);
+      for(const [columnOffset,rowOffset] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const key=`${cell.column+columnOffset},${cell.row+rowOffset}`;
+        if(!remaining.has(key)) continue;
+        remaining.delete(key);
+        queue.push(occupied.get(key));
+      }
+    }
+    const overlap=component.filter(cell=>best.points.some(point=>Math.hypot(point.x-cell.point.x,point.y-cell.point.y)<fittedSide*.35)).length;
+    const rank=overlap*100+component.length;
+    if(rank>expandedRank){expandedRank=rank;expandedCells=component;}
+  }
+  if(expandedCells.length){
+    const columnScores=new Map();
+    const rowScores=new Map();
+    for(const cell of expandedCells){
+      if(!columnScores.has(cell.column)) columnScores.set(cell.column,[]);
+      if(!rowScores.has(cell.row)) rowScores.set(cell.row,[]);
+      columnScores.get(cell.column).push(cell.point.score);
+      rowScores.get(cell.row).push(cell.point.score);
+    }
+    const columnAverages=new Map([...columnScores].map(([key,values])=>[key,values.reduce((sum,value)=>sum+value,0)/values.length]));
+    const rowAverages=new Map([...rowScores].map(([key,values])=>[key,values.reduce((sum,value)=>sum+value,0)/values.length]));
+    const bestColumn=Math.max(...columnAverages.values());
+    const bestRow=Math.max(...rowAverages.values());
+    expandedCells=expandedCells.filter(cell=>columnAverages.get(cell.column)>=bestColumn*.68&&rowAverages.get(cell.row)>=bestRow*.7);
+  }
+  const expanded=expandedCells.map(cell=>cell.point);
+  const points=[];
+  for(const point of (expanded.length>=best.points.length?expanded:best.points).sort((a,b)=>a.y-b.y||a.x-b.x)){
+    if(points.some(other=>Math.hypot(other.x-point.x,other.y-point.y)<fittedSide*.55)) continue;
+    points.push(point);
+  }
+  return {
+    side:Math.round(fittedSide/model.scale),
+    points:points.map(point=>({
+      x:(point.x+fittedSide*.22)/model.scale,
+      y:(point.y+fittedSide*.5)/model.scale
+    }))
+  };
+}
+function capturePopcount(value){
+  value=value>>>0;
+  value=value-((value>>>1)&0x55555555);
+  value=(value&0x33333333)+((value>>>2)&0x33333333);
+  return (((value+(value>>>4))&0x0f0f0f0f)*0x01010101)>>>24;
+}
+function captureDctMatrix(){
+  if(captureDctMatrix.cache) return captureDctMatrix.cache;
+  const size=32;
+  const matrix=new Float64Array(size*size);
+  for(let frequency=0;frequency<size;frequency++){
+    const factor=frequency===0?Math.sqrt(1/size):Math.sqrt(2/size);
+    for(let coordinate=0;coordinate<size;coordinate++){
+      matrix[frequency*size+coordinate]=factor*Math.cos(Math.PI*(2*coordinate+1)*frequency/(2*size));
+    }
+  }
+  captureDctMatrix.cache=matrix;
+  return matrix;
+}
+function captureVisualDescriptor(draft){
+  const image=$("captureImage");
+  const side=Math.max(30,Number(draft.slotSize)||captureSlotSize());
+  const contentSide=side*.76;
+  const sourceX=Math.max(0,draft.x-contentSide/2);
+  const sourceY=Math.max(0,draft.y-contentSide/2);
+  const canvas=document.createElement("canvas");
+  canvas.width=32;canvas.height=32;
+  const context=canvas.getContext("2d",{willReadFrequently:true});
+  context.fillStyle="rgb(44,50,54)";
+  context.fillRect(0,0,32,32);
+  context.imageSmoothingEnabled=true;
+  context.imageSmoothingQuality="high";
+  context.drawImage(image,sourceX,sourceY,contentSide,contentSide,0,0,32,32);
+  const rgba=context.getImageData(0,0,32,32).data;
+  const grey=new Float64Array(1024);
+  for(let index=0,pixel=0;index<grey.length;index++,pixel+=4){
+    grey[index]=.299*rgba[pixel]+.587*rgba[pixel+1]+.114*rgba[pixel+2];
+  }
+  const matrix=captureDctMatrix();
+  const horizontal=new Float64Array(1024);
+  for(let y=0;y<32;y++){
+    for(let frequency=0;frequency<32;frequency++){
+      let sum=0;
+      for(let x=0;x<32;x++) sum+=matrix[frequency*32+x]*grey[y*32+x];
+      horizontal[y*32+frequency]=sum;
+    }
+  }
+  const coefficients=[];
+  for(let vertical=0;vertical<8;vertical++){
+    for(let horizontalFrequency=0;horizontalFrequency<8;horizontalFrequency++){
+      let sum=0;
+      for(let y=0;y<32;y++) sum+=matrix[vertical*32+y]*horizontal[y*32+horizontalFrequency];
+      coefficients.push(sum);
+    }
+  }
+  const threshold=[...coefficients.slice(1)].sort((a,b)=>a-b)[31];
+  let high=0,low=0;
+  coefficients.forEach((value,index)=>{
+    if(index<32) high=((high<<1)|(value>=threshold?1:0))>>>0;
+    else low=((low<<1)|(value>=threshold?1:0))>>>0;
+  });
+  const colourCanvas=document.createElement("canvas");
+  colourCanvas.width=4;colourCanvas.height=4;
+  const colourContext=colourCanvas.getContext("2d",{willReadFrequently:true});
+  colourContext.drawImage(canvas,0,0,4,4);
+  const colourRgba=colourContext.getImageData(0,0,4,4).data;
+  const colours=[];
+  for(let pixel=0;pixel<colourRgba.length;pixel+=4){
+    colours.push(colourRgba[pixel]>>4,colourRgba[pixel+1]>>4,colourRgba[pixel+2]>>4);
+  }
+  const detailCanvas=document.createElement("canvas");
+  detailCanvas.width=12;detailCanvas.height=12;
+  const detailContext=detailCanvas.getContext("2d",{willReadFrequently:true});
+  detailContext.drawImage(canvas,0,0,12,12);
+  const detailRgba=detailContext.getImageData(0,0,12,12).data;
+  const details=[];
+  for(let pixel=0;pixel<detailRgba.length;pixel+=4){
+    details.push(Math.min(15,Math.floor((.299*detailRgba[pixel]+.587*detailRgba[pixel+1]+.114*detailRgba[pixel+2])/16)));
+  }
+  return {high,low,colours,details};
+}
+async function loadCaptureVisualIndex(){
+  if(captureVisualIndexPromise) return captureVisualIndexPromise;
+  captureVisualIndexPromise=fetch("./item-visual-index.json?v=2",{cache:"force-cache"})
+    .then(response=>{
+      if(!response.ok) throw new Error("Índice visual no disponible.");
+      return response.json();
+    })
+    .then(payload=>(payload.records||[]).map(record=>({
+      id:record[0],
+      high:Number.parseInt(record[1].slice(0,8),16)>>>0,
+      low:Number.parseInt(record[1].slice(8),16)>>>0,
+      colours:[...record[2]].map(value=>Number.parseInt(value,16)),
+      details:[...(record[3]||"")].map(value=>Number.parseInt(value,16))
+    })))
+    .catch(error=>{
+      captureVisualIndexPromise=null;
+      throw error;
+    });
+  return captureVisualIndexPromise;
+}
+function captureRecognitionLabel(recognition){
+  if(!recognition?.automatic) return "✓ revisado";
+  if(recognition.state==="busy") return "analizando…";
+  return `detectado · confianza ${recognition.confidence||"baja"}`;
+}
+async function recognizeCaptureObjects(sequence){
+  try{
+    await itemLoadPromise;
+    const index=await loadCaptureVisualIndex();
+    if(sequence!==captureDetectionSequence) return;
+    const catalog=new Map(items.map(item=>[item.id,item]));
+    for(let draftIndex=0;draftIndex<captureDrafts.length;draftIndex++){
+      const draft=captureDrafts[draftIndex];
+      if(draft.x==null) continue;
+      const descriptor=captureVisualDescriptor(draft);
+      const scored=[];
+      for(const record of index){
+        if(!catalog.has(record.id)) continue;
+        const hashDistance=capturePopcount(descriptor.high^record.high)+capturePopcount(descriptor.low^record.low);
+        let colourDistance=0;
+        for(let index=0;index<48;index++) colourDistance+=Math.abs(descriptor.colours[index]-record.colours[index]);
+        const score=hashDistance*1.15+(colourDistance/48)*.8;
+        scored.push({record,score});
+      }
+      scored.sort((left,right)=>left.score-right.score);
+      const detailAverage=descriptor.details.reduce((sum,value)=>sum+value,0)/descriptor.details.length;
+      const detailDeviation=Math.sqrt(descriptor.details.reduce((sum,value)=>sum+(value-detailAverage)**2,0)/descriptor.details.length)||1;
+      for(const result of scored.slice(0,250)){
+        if(result.record.details.length!==descriptor.details.length){result.finalScore=result.score;continue;}
+        const average=result.record.details.reduce((sum,value)=>sum+value,0)/result.record.details.length;
+        const deviation=Math.sqrt(result.record.details.reduce((sum,value)=>sum+(value-average)**2,0)/result.record.details.length)||1;
+        let normalizedError=0;
+        for(let index=0;index<descriptor.details.length;index++){
+          const difference=(descriptor.details[index]-detailAverage)/detailDeviation-(result.record.details[index]-average)/deviation;
+          normalizedError+=difference*difference;
+        }
+        result.finalScore=result.score*.25+(normalizedError/descriptor.details.length)*7;
+      }
+      scored.splice(250);
+      scored.sort((left,right)=>(left.finalScore??left.score)-(right.finalScore??right.score));
+      const best=scored[0];
+      if(best){
+        const item=catalog.get(best.record.id);
+        const score=best.finalScore??best.score;
+        const nextScore=scored[1]?.finalScore??scored[1]?.score??score+2;
+        const gap=nextScore-score;
+        const confidence=score<=6&&gap>=.5?"alta":score<=10&&gap>=.22?"media":"baja";
+        draft.item={id:item.id,name:item.name};
+        draft.query=item.name;
+        draft.recognition={
+          automatic:true,state:"done",confidence,score,
+          alternatives:scored.slice(0,4).map(result=>catalog.get(result.record.id)).filter(Boolean)
+        };
+      }else{
+        draft.recognition={automatic:true,state:"error",confidence:"baja",alternatives:[]};
+      }
+      if(draftIndex%4===3){
+        renderCaptureDrafts();
+        await new Promise(resolve=>setTimeout(resolve,0));
+        if(sequence!==captureDetectionSequence) return;
+      }
+    }
+    renderCaptureDrafts();
+  }catch(_){
+    for(const draft of captureDrafts){
+      if(draft.recognition?.automatic) draft.recognition={automatic:true,state:"error",confidence:"baja",alternatives:[]};
+    }
+    renderCaptureDrafts();
+  }
+}
+function newCaptureDraft(point=null,options={}){
+  const side=Number(options.slotSize)||captureSlotSize();
+  const automatic=options.automatic===true;
+  const draft={
+    uid:captureUid(),x:point?.x??null,y:point?.y??null,slotSize:side,crop:"",
+    query:"",item:null,enchantment:0,quality:1,quantity:1,matches:[],
+    recognition:automatic?{automatic:true,state:"busy",confidence:"",alternatives:[]}:null,
+    quantityEdited:false,ocrState:point?"busy":"manual",
+    ocrStatus:point?"Cantidad pendiente de lectura…":"Cantidad manual"
+  };
+  draft.crop=cropCaptureDraft(draft);
+  return draft;
+}
+async function autoDetectCapture(){
+  if(!$("captureImage").naturalWidth) return;
+  const sequence=++captureDetectionSequence;
+  const button=$("autoDetectCaptureBtn");
+  button.disabled=true;
+  button.textContent="Detectando…";
+  setCaptureStatus("Buscando la cuadrícula y las casillas ocupadas…",true);
+  await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
+  try{
+    const result=detectCaptureSlots();
+    if(sequence!==captureDetectionSequence) return;
+    if(!result?.points.length){
+      captureDrafts=[];
+      renderCaptureDrafts();
+      setCaptureStatus("No encontré una cuadrícula clara. Ajusta el tamaño o toca cada objeto manualmente.");
+      return;
+    }
+    const limited=result.points.slice(0,120);
+    $("captureSlotSize").value=Math.max(Number($("captureSlotSize").min),Math.min(Number($("captureSlotSize").max),result.side));
+    $("captureSlotSizeLabel").textContent=`${result.side} px`;
+    captureDrafts=limited.map(point=>newCaptureDraft(point,{slotSize:result.side,automatic:true}));
+    renderCaptureDrafts();
+    setCaptureStatus(`${limited.length} casilla${limited.length===1?"":"s"} encontrada${limited.length===1?"":"s"}. Identificando objetos…`,true);
+    await recognizeCaptureObjects(sequence);
+    if(sequence!==captureDetectionSequence) return;
+    const low=captureDrafts.filter(draft=>draft.recognition?.confidence==="baja").length;
+    setCaptureStatus(`${captureDrafts.length} objeto${captureDrafts.length===1?"":"s"} propuesto${captureDrafts.length===1?"":"s"}. ${low?`${low} con confianza baja. `:""}Revisa y cambia cualquier dato antes de importar.`);
+    captureDrafts.forEach(draft=>queueQuantityRecognition(draft.uid));
+  }catch(_){
+    setCaptureStatus("No pude completar la detección. Puedes volver a intentarlo o marcar las casillas manualmente.");
+  }finally{
+    if(sequence===captureDetectionSequence){
+      button.disabled=false;
+      button.textContent="Detectar objetos";
+    }
+  }
+}
 function drawCaptureOverlay(){
   const img=$("captureImage"),canvas=$("captureOverlay");
   if(!img.naturalWidth) return;
@@ -279,12 +770,7 @@ function addCaptureDraft(point=null){
       return;
     }
   }
-  const draft={
-    uid:captureUid(),x:point?.x??null,y:point?.y??null,slotSize:side,crop:"",
-    query:"",item:null,enchantment:0,quality:1,quantity:1,matches:[],
-    quantityEdited:false,ocrState:point?"busy":"manual",ocrStatus:point?"Preparando lectura de cantidad…":"Cantidad manual"
-  };
-  draft.crop=cropCaptureDraft(draft);
+  const draft=newCaptureDraft(point,{slotSize:side});
   captureDrafts.push(draft);
   renderCaptureDrafts();
   if(point) queueQuantityRecognition(draft.uid);
@@ -297,17 +783,22 @@ function renderCaptureDrafts(){
   $("captureDraftCount").textContent=captureDrafts.length;
   $("captureDraftCount").classList.toggle("hidden",!captureDrafts.length);
   $("captureDrafts").innerHTML=captureDrafts.map((draft,index)=>`
-    <article class="capture-draft ${draft.item?"ready":""}" data-capture-id="${esc(draft.uid)}">
+    <article class="capture-draft ${draft.item?"ready":""} ${draft.recognition?.confidence==="baja"?"low-confidence":""}" data-capture-id="${esc(draft.uid)}">
       <div class="capture-draft-preview">
         ${draft.crop?`<img src="${draft.crop}" alt="Recorte de la casilla ${index+1}">`:`<span class="capture-draft-placeholder">+</span>`}
         <span class="capture-draft-number">${index+1}</span>
       </div>
       <div class="capture-draft-main">
         <div class="capture-item-search">
-          <label for="capture-item-${esc(draft.uid)}">Objeto ${draft.item?`<small>✓ confirmado</small>`:""}</label>
+          <label for="capture-item-${esc(draft.uid)}">Objeto ${draft.item||draft.recognition?`<small class="recognition-${esc(draft.recognition?.confidence||"reviewed")}">${esc(captureRecognitionLabel(draft.recognition))}</small>`:""}</label>
           <input id="capture-item-${esc(draft.uid)}" data-field="item" autocomplete="off" placeholder="Buscar nombre o ID…" value="${esc(draft.query)}">
           <div class="capture-draft-suggestions hidden"></div>
         </div>
+        ${draft.recognition?.automatic&&draft.recognition.state==="done"?`
+          <div class="capture-recognition-note ${draft.recognition.confidence}">
+            <span>${draft.recognition.confidence==="baja"?"Comprueba este nombre":"Propuesta automática"}</span>
+            <button data-action="edit-capture-item" type="button">Cambiar</button>
+          </div>`:""}
         <div class="capture-mini-grid">
           <div class="field">
             <label for="capture-enchant-${esc(draft.uid)}">Encantamiento</label>
@@ -332,7 +823,7 @@ function renderCaptureDrafts(){
       <button class="remove-item" data-action="remove-capture" title="Quitar casilla" aria-label="Quitar casilla ${index+1}">×</button>
     </article>`).join("");
   if(!captureDrafts.length){
-    $("captureDrafts").innerHTML=`<div class="transport-empty">Toca los objetos de la captura o añade una fila manual.</div>`;
+    $("captureDrafts").innerHTML=`<div class="transport-empty">Pulsa Detectar objetos, toca las casillas o añade una fila manual.</div>`;
   }
   updateCaptureImportButton();
   drawCaptureOverlay();
@@ -382,6 +873,7 @@ function selectCaptureItem(draft,item){
   draft.item={id,name:catalogItem?.name||(item.manual?id:item.name)};
   draft.query=draft.item.name;
   draft.enchantment=Math.max(0,Math.min(4,enchantment));
+  draft.recognition={automatic:false,state:"reviewed",confidence:"reviewed",alternatives:[]};
   renderCaptureDrafts();
 }
 function loadCaptureScript(src){
@@ -453,11 +945,21 @@ function quantityCanvas(draft){
 function queueQuantityRecognition(uid){
   captureOcrQueue=captureOcrQueue.then(()=>recognizeCaptureQuantity(uid)).catch(()=>{});
 }
+function updateCaptureOcrCard(draft){
+  const card=$("captureDrafts").querySelector(`[data-capture-id="${draft.uid}"]`);
+  if(!card) return;
+  const input=card.querySelector('[data-field="quantity"]');
+  if(input&&document.activeElement!==input) input.value=draft.quantity;
+  const status=card.querySelector(".capture-ocr-status");
+  if(!status) return;
+  status.className=`capture-ocr-status ${draft.ocrState==="done"?"good":draft.ocrState==="error"?"bad":""}`;
+  status.innerHTML=`<span>${esc(draft.ocrStatus)}</span>${draft.x!=null&&draft.ocrState!=="busy"?`<button data-action="retry-ocr" type="button">Releer</button>`:""}`;
+}
 async function recognizeCaptureQuantity(uid){
   const draft=captureDrafts.find(item=>item.uid===uid);
   if(!draft||draft.x==null) return;
   draft.ocrState="busy";draft.ocrStatus="Leyendo cantidad en este dispositivo…";
-  renderCaptureDrafts();
+  updateCaptureOcrCard(draft);
   try{
     const worker=await getCaptureOcrWorker();
     if(!captureDrafts.some(item=>item.uid===uid)) return;
@@ -480,7 +982,7 @@ async function recognizeCaptureQuantity(uid){
     draft.ocrState="error";
     draft.ocrStatus="OCR no disponible. Escribe la cantidad manualmente.";
   }
-  renderCaptureDrafts();
+  updateCaptureOcrCard(draft);
   const pending=captureDrafts.filter(item=>item.ocrState==="busy").length;
   setCaptureStatus(pending?`Leyendo ${pending} casilla${pending===1?"":"s"}…`:"Revisa los objetos y cantidades antes de añadirlos al cofre.",pending>0);
 }
@@ -1206,6 +1708,7 @@ $("captureSlotSize").addEventListener("input",event=>{
   $("captureSlotSizeLabel").textContent=`${event.target.value} px`;
   recropCaptureDrafts();
 });
+$("autoDetectCaptureBtn").addEventListener("click",autoDetectCapture);
 $("clearCaptureMarksBtn").addEventListener("click",clearCaptureDrafts);
 $("addManualCaptureItemBtn").addEventListener("click",()=>addCaptureDraft());
 $("importChestItemsBtn").addEventListener("click",importCaptureDrafts);
@@ -1218,6 +1721,7 @@ $("captureDrafts").addEventListener("input",event=>{
   if(field==="item"){
     draft.query=event.target.value;
     if(draft.item&&draft.query!==draft.item.name) draft.item=null;
+    draft.recognition=null;
     renderCaptureSuggestions(draft,card);
     updateCaptureImportButton();
   }else if(field==="quantity"){
@@ -1273,6 +1777,11 @@ $("captureDrafts").addEventListener("click",event=>{
   }else if(action==="select-capture-item"){
     const index=Number(event.target.closest("[data-index]")?.dataset.index);
     if(draft.matches[index]) selectCaptureItem(draft,draft.matches[index]);
+  }else if(action==="edit-capture-item"){
+    const input=card.querySelector('[data-field="item"]');
+    input?.focus();
+    input?.select();
+    renderCaptureSuggestions(draft,card);
   }
 });
 $("quality").addEventListener("change",()=>{
@@ -1402,11 +1911,11 @@ $("installBtn").addEventListener("click",async()=>{
 });
 
 if("serviceWorker" in navigator){
-  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js?v=2.5.1").catch(()=>{}));
+  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js?v=2.6.0").catch(()=>{}));
 }
 
 loadSettings();
 renderQuickLists();
 renderTransportPlanner();
 renderView();
-loadItems();
+itemLoadPromise=loadItems();

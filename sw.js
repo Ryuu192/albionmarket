@@ -1,12 +1,13 @@
-const CACHE="albion-market-pocket-v2-5-1-clipboard-v1";
+const CACHE="albion-market-pocket-v2-6-0-auto-detect-v1";
 const OCR_CACHE="albion-market-pocket-ocr-v1";
 const OCR_HOSTS=new Set(["cdn.jsdelivr.net","unpkg.com","tessdata.projectnaptha.com"]);
 const ASSETS=[
   "./",
   "./index.html",
-  "./styles.css?v=2.5.1",
-  "./app.js?v=2.5.1",
-  "./manifest.webmanifest?v=2.5.1",
+  "./styles.css?v=2.6.0",
+  "./app.js?v=2.6.0",
+  "./manifest.webmanifest?v=2.6.0",
+  "./item-visual-index.json?v=2",
   "./icon.svg",
   "./icon-192.png",
   "./icon-512.png"

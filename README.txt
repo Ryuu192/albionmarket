@@ -1,4 +1,4 @@
-ALBION MARKET POCKET — V2.5.1
+ALBION MARKET POCKET — V2.6.0
 
 NOVEDADES
 ---------
@@ -10,7 +10,11 @@ NOVEDADES
 - Pantallas separadas para Mercado y Transporte con navegación superior.
 - Importación de Mi cofre mediante capturas, sin subir la imagen a servidores.
 - Pegado directo de capturas desde el portapapeles con Ctrl + V o Cmd + V.
-- Selección visual de casillas con recorte del icono para confirmar cada objeto.
+- Detección automática de la cuadrícula y las casillas ocupadas del cofre.
+- Propuestas automáticas de nombres mediante un índice visual local de iconos.
+- Nivel de confianza en cada propuesta y botón Cambiar para corregirla.
+- Nombre, encantamiento, calidad y cantidad editables antes de importar.
+- Selección manual de casillas disponible como alternativa.
 - Lectura OCR local de cantidades con corrección manual cuando sea necesario.
 - Importación por lotes y consulta automática de los precios de toda la captura.
 - Cofre con varios objetos, calidades y cantidades.
@@ -48,6 +52,6 @@ Los datos del mercado son comunitarios. La app muestra antigüedad del dato.
 El modo de venta instantánea usa la orden de compra más alta. El modo de
 publicación usa la venta más barata como referencia de mercado. Los costes son
 manuales para no asumir un porcentaje incorrecto para tu situación.
-Las capturas se mantienen solo en la memoria del navegador. Albion no muestra
-los nombres de los objetos sobre los iconos del cofre, por lo que la app pide
-confirmar cada nombre mediante el catálogo antes de importarlo.
+Las capturas se mantienen solo en la memoria del navegador. La identificación
+visual es una propuesta y puede fallar con otras escalas, temas o versiones de
+la interfaz; revisa las coincidencias de confianza baja antes de importarlas.
