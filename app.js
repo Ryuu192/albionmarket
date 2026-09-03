@@ -15,7 +15,8 @@ const STORE = {
   favorites: "amp-favorites-v2",
   recent: "amp-recent-v2",
   transport: "amp-transport-v1",
-  transportConfig: "amp-transport-config-v2"
+  transportConfig: "amp-transport-config-v2",
+  captureSession: "amp-capture-session-v1"
 };
 
 let items = [];
@@ -162,6 +163,31 @@ function clearCaptureDrafts(){
   captureDrafts=[];
   renderCaptureDrafts();
   setCaptureStatus("Pulsa Detectar objetos o toca una casilla para añadirla manualmente.");
+}
+function saveCaptureDraftSession(){
+  if(!captureDrafts.length){
+    localStorage.removeItem(STORE.captureSession);
+    return;
+  }
+  const drafts=captureDrafts.map(draft=>({
+    ...draft,
+    x:null,y:null,slotSize:Number(draft.slotSize)||72,matches:[],
+    recognition:draft.recognition?.state==="busy"?null:draft.recognition,
+    ocrState:draft.ocrState==="busy"?"error":draft.ocrState,
+    ocrStatus:draft.ocrState==="busy"?"Lectura interrumpida; revisa la cantidad.":draft.ocrStatus
+  }));
+  try{setStore(STORE.captureSession,{savedAt:Date.now(),drafts});}catch(_){}
+}
+function restoreCaptureDraftSession(){
+  const session=getStore(STORE.captureSession,null);
+  if(!session?.drafts?.length) return;
+  captureDrafts=session.drafts.slice(0,120).map(draft=>({
+    ...newCaptureDraft(),...draft,uid:captureUid(),x:null,y:null,matches:[]
+  }));
+  $("captureWorkspace").classList.remove("hidden");
+  renderCaptureDrafts();
+  const saved=new Date(session.savedAt||Date.now()).toLocaleString("es-UY",{dateStyle:"short",timeStyle:"short"});
+  setCaptureStatus(`Sesión recuperada (${saved}). Revisa los datos antes de importar.`);
 }
 function captureSlotSize(){
   return Math.max(44,Math.min(180,Number($("captureSlotSize").value)||72));
@@ -779,6 +805,51 @@ function addCaptureDraft(point=null){
 function captureQualityOptions(selectedQuality){
   return Object.entries(QUALITY_NAMES).map(([value,label])=>`<option value="${value}" ${Number(value)===Number(selectedQuality)?"selected":""}>${esc(label)}</option>`).join("");
 }
+function captureDuplicateGroups(){
+  const groups=new Map();
+  for(const draft of captureDrafts){
+    if(!draft.item) continue;
+    const key=`${draft.item.id}@${Number(draft.enchantment)||0}|${Number(draft.quality)||1}`;
+    if(!groups.has(key)) groups.set(key,[]);
+    groups.get(key).push(draft);
+  }
+  return [...groups.values()].filter(group=>group.length>1);
+}
+function mergeCaptureDuplicates(){
+  const groups=captureDuplicateGroups();
+  if(!groups.length) return;
+  const removed=new Set();
+  for(const group of groups){
+    const keeper=group[0];
+    keeper.quantity=group.reduce((sum,draft)=>sum+Math.max(1,Math.floor(Number(draft.quantity)||1)),0);
+    keeper.quantityEdited=true;
+    keeper.ocrState="done";
+    keeper.ocrStatus=`${group.length} casillas agrupadas · ${keeper.quantity} unidades.`;
+    group.slice(1).forEach(draft=>removed.add(draft.uid));
+  }
+  captureDrafts=captureDrafts.filter(draft=>!removed.has(draft.uid));
+  renderCaptureDrafts();
+  setCaptureStatus(`${removed.size} duplicado${removed.size===1?"":"s"} agrupado${removed.size===1?"":"s"}. Revisa las cantidades resultantes.`);
+}
+function renderCaptureReviewSummary(){
+  const summary=$("captureReviewSummary");
+  if(!summary) return;
+  const ready=captureDrafts.filter(draft=>draft.item).length;
+  const missing=captureDrafts.length-ready;
+  const low=captureDrafts.filter(draft=>draft.recognition?.automatic&&draft.recognition.confidence==="baja").length;
+  const duplicates=captureDuplicateGroups();
+  const units=captureDrafts.reduce((sum,draft)=>sum+Math.max(1,Math.floor(Number(draft.quantity)||1)),0);
+  summary.classList.toggle("hidden",!captureDrafts.length);
+  summary.innerHTML=!captureDrafts.length?"":`
+    <div class="capture-review-head"><strong>Resumen antes de importar</strong><span>${captureDrafts.length} casillas · ${units} unidades</span></div>
+    <div class="capture-review-stats">
+      <span class="${missing?"bad":"good"}">${missing?`${missing} sin identificar`:"Todos identificados"}</span>
+      <span class="${low?"warning":"good"}">${low?`${low} requieren revisión`:"Sin dudas pendientes"}</span>
+      <span class="${duplicates.length?"warning":""}">${duplicates.length?`${duplicates.length} grupos repetidos`:"Sin repetidos"}</span>
+    </div>
+    ${duplicates.length?`<button id="mergeCaptureDuplicatesBtn" class="ghost" type="button">Agrupar objetos repetidos</button>`:""}`;
+  $("mergeCaptureDuplicatesBtn")?.addEventListener("click",mergeCaptureDuplicates);
+}
 function renderCaptureDrafts(){
   $("captureDraftCount").textContent=captureDrafts.length;
   $("captureDraftCount").classList.toggle("hidden",!captureDrafts.length);
@@ -797,7 +868,7 @@ function renderCaptureDrafts(){
         ${draft.recognition?.automatic&&draft.recognition.state==="done"?`
           <div class="capture-recognition-note ${draft.recognition.confidence}">
             <span>${draft.recognition.confidence==="baja"?"Comprueba este nombre":"Propuesta automática"}</span>
-            <button data-action="edit-capture-item" type="button">Cambiar</button>
+            <span><button data-action="review-capture-item" type="button">Confirmar</button><button data-action="edit-capture-item" type="button">Cambiar</button></span>
           </div>`:""}
         <div class="capture-mini-grid">
           <div class="field">
@@ -826,13 +897,16 @@ function renderCaptureDrafts(){
     $("captureDrafts").innerHTML=`<div class="transport-empty">Pulsa Detectar objetos, toca las casillas o añade una fila manual.</div>`;
   }
   updateCaptureImportButton();
+  renderCaptureReviewSummary();
   drawCaptureOverlay();
+  saveCaptureDraftSession();
 }
 function updateCaptureImportButton(){
   const button=$("importChestItemsBtn");
   const ready=captureDrafts.filter(draft=>draft.item).length;
-  button.disabled=!captureDrafts.length||ready!==captureDrafts.length;
-  button.textContent=!captureDrafts.length?"Añadir al cofre y consultar precios":ready===captureDrafts.length?`Añadir ${ready} objeto${ready===1?"":"s"} al cofre`:`Confirma ${captureDrafts.length-ready} objeto${captureDrafts.length-ready===1?"":"s"}`;
+  const low=captureDrafts.filter(draft=>draft.recognition?.automatic&&draft.recognition.confidence==="baja").length;
+  button.disabled=!captureDrafts.length||ready!==captureDrafts.length||low>0;
+  button.textContent=!captureDrafts.length?"Añadir al cofre y consultar precios":low?`Revisa ${low} resultado${low===1?"":"s"} dudoso${low===1?"":"s"}`:ready===captureDrafts.length?`Añadir ${ready} objeto${ready===1?"":"s"} al cofre`:`Confirma ${captureDrafts.length-ready} objeto${captureDrafts.length-ready===1?"":"s"}`;
 }
 
 function findCaptureMatches(query){
@@ -1731,6 +1805,8 @@ $("captureDrafts").addEventListener("input",event=>{
     draft.ocrStatus="Cantidad revisada manualmente.";
     card.querySelector(".capture-ocr-status span").textContent=draft.ocrStatus;
     card.querySelector(".capture-ocr-status").className="capture-ocr-status good";
+    renderCaptureReviewSummary();
+    saveCaptureDraftSession();
   }
 });
 $("captureDrafts").addEventListener("change",event=>{
@@ -1742,6 +1818,8 @@ $("captureDrafts").addEventListener("change",event=>{
   if(field==="enchantment") draft.enchantment=Number(event.target.value)||0;
   if(field==="quality") draft.quality=Number(event.target.value)||1;
   if(field==="quantity") draft.quantity=Math.max(1,Math.floor(Number(event.target.value)||1));
+  renderCaptureReviewSummary();
+  saveCaptureDraftSession();
 });
 $("captureDrafts").addEventListener("focusin",event=>{
   if(event.target.dataset.field!=="item") return;
@@ -1782,6 +1860,9 @@ $("captureDrafts").addEventListener("click",event=>{
     input?.focus();
     input?.select();
     renderCaptureSuggestions(draft,card);
+  }else if(action==="review-capture-item"){
+    draft.recognition={automatic:false,state:"reviewed",confidence:"reviewed",alternatives:[]};
+    renderCaptureDrafts();
   }
 });
 $("quality").addEventListener("change",()=>{
@@ -1911,11 +1992,11 @@ $("installBtn").addEventListener("click",async()=>{
 });
 
 if("serviceWorker" in navigator){
-  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js?v=2.6.0").catch(()=>{}));
+  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js?v=2.7.0").catch(()=>{}));
 }
 
 loadSettings();
 renderQuickLists();
 renderTransportPlanner();
 renderView();
-itemLoadPromise=loadItems();
+itemLoadPromise=loadItems().then(()=>restoreCaptureDraftSession());

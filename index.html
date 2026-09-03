@@ -7,17 +7,17 @@
   <meta name="description" content="Mercado móvil de Albion Online: precios, Mi cofre por captura, transporte e historial." />
   <meta name="apple-mobile-web-app-title" content="Albion Market" />
   <title>Albion Market Pocket</title>
-  <link rel="manifest" href="manifest.webmanifest?v=2.6.0" />
+  <link rel="manifest" href="manifest.webmanifest?v=2.7.0" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=2.6.0" />
+  <link rel="stylesheet" href="styles.css?v=2.7.0" />
 </head>
 <body>
   <header class="app-header">
     <div class="topbar">
       <div>
         <p class="eyebrow">ALBION ONLINE</p>
-        <h1>Market Pocket <span class="version">v2.6.0</span></h1>
+        <h1>Market Pocket <span class="version">v2.7.0</span></h1>
       </div>
       <div class="top-actions">
         <button id="shareBtn" class="icon-btn" title="Compartir">↗</button>
@@ -206,6 +206,8 @@
         </div>
         <div id="captureDrafts" class="capture-drafts"></div>
 
+        <div id="captureReviewSummary" class="capture-review-summary hidden" aria-live="polite"></div>
+
         <div class="capture-actions">
           <label for="chestCaptureInput" class="ghost capture-replace">Cambiar captura</label>
           <button id="importChestItemsBtn" class="primary" disabled>Añadir al cofre y consultar precios</button>
@@ -313,6 +315,6 @@
     Datos: Albion Online Data Project · Imágenes: Albion Render Service · OCR local: Tesseract.js
   </footer>
 
-  <script src="app.js?v=2.6.0"></script>
+  <script src="app.js?v=2.7.0"></script>
 </body>
 </html>

@@ -1,7 +1,12 @@
-ALBION MARKET POCKET — V2.6.0
+ALBION MARKET POCKET — V2.7.0
 
 NOVEDADES
 ---------
+- Sesiones de importación recuperables automáticamente en el dispositivo.
+- Resumen previo con casillas, unidades, objetos sin identificar y dudas pendientes.
+- Resultados de confianza baja que deben confirmarse antes de importar.
+- Detección y agrupación opcional de objetos repetidos, sumando sus cantidades.
+- Prevención reforzada de casillas duplicadas durante la selección manual.
 - Favoritos guardados en el celular.
 - Búsquedas recientes.
 - Preferencias persistentes de servidor, calidad y encantamiento.
